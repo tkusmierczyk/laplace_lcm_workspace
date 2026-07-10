@@ -14,6 +14,7 @@ from laplace.baselaplace import (
     FullLaplace,
     FunctionalLaplace,
     KronLaplace,
+    LCMLaplace,
     ParametricLaplace,
 )
 from laplace.curvature import BackPackGGN
@@ -378,6 +379,64 @@ class FullLLLaplace(LLLaplace, FullLaplace):
 
     # key to map to correct subclass of BaseLaplace, (subset of weights, Hessian structure)
     _key = ("last_layer", "full")
+
+
+class LCMLLLaplace(LLLaplace, LCMLaplace):
+    """Last-layer Laplace approximation with a Laplace-Covariance-Model structured
+    Hessian. The last-layer GGN is accumulated densely and approximated by the
+    structured LCM matrix (see :class:`~laplace.baselaplace.LCMLaplace`).
+    This is the recommended, practical LCM variant: the last-layer parameter count
+    is modest, so the dense fit is cheap, while the structured model captures
+    cross-parameter curvature the diagonal last-layer Laplace ignores.
+    See `LCMLaplace`, `LLLaplace`, and `BaseLaplace` for the full interface.
+    """
+
+    _key = ("last_layer", "lcm")
+
+    def __init__(
+        self,
+        model: nn.Module,
+        likelihood: Likelihood | str,
+        sigma_noise: float | torch.Tensor = 1.0,
+        prior_precision: float | torch.Tensor = 1.0,
+        prior_mean: float | torch.Tensor = 0.0,
+        temperature: float = 1.0,
+        enable_backprop: bool = False,
+        feature_reduction: FeatureReduction | str | None = None,
+        dict_key_x: str = "input_ids",
+        dict_key_y: str = "labels",
+        backend: type[CurvatureInterface] | None = None,
+        last_layer_name: str | None = None,
+        backend_kwargs: dict[str, Any] | None = None,
+        asdl_fisher_kwargs: dict[str, Any] | None = None,
+        lcm_steps: int = 500,
+        lcm_lr: float = 1e-2,
+        lcm_eps: float = 1e-6,
+        lcm_init_a_scale: float = 1.0,
+        lcm_fast_logdet: bool = True,
+    ):
+        super().__init__(
+            model,
+            likelihood,
+            sigma_noise=sigma_noise,
+            prior_precision=prior_precision,
+            prior_mean=prior_mean,
+            temperature=temperature,
+            enable_backprop=enable_backprop,
+            feature_reduction=feature_reduction,
+            dict_key_x=dict_key_x,
+            dict_key_y=dict_key_y,
+            backend=backend,
+            last_layer_name=last_layer_name,
+            backend_kwargs=backend_kwargs,
+            asdl_fisher_kwargs=asdl_fisher_kwargs,
+        )
+        # LCMLaplace.__init__ ran in the MRO chain with defaults; apply user values.
+        self.lcm_steps = lcm_steps
+        self.lcm_lr = lcm_lr
+        self.lcm_eps = lcm_eps
+        self.lcm_init_a_scale = lcm_init_a_scale
+        self.lcm_fast_logdet = lcm_fast_logdet
 
 
 class KronLLLaplace(LLLaplace, KronLaplace):

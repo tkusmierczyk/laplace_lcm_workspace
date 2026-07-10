@@ -1647,6 +1647,146 @@ class FullLaplace(ParametricLaplace):
         return self.mean.reshape(1, self.n_params) + samples
 
 
+class LCMLaplace(FullLaplace):
+    """Laplace approximation with a *Laplace-Covariance-Model* structured Hessian.
+
+    The dense log-likelihood Hessian / GGN is first accumulated exactly (as in
+    :class:`FullLaplace`) and then approximated by the structured matrix
+
+    $$
+        A = \\mathrm{diag}(d) + \\mathrm{diag}(w)\\, K(a)\\, \\mathrm{diag}(w),
+        \\qquad K(a)_{ij} = \\exp(-|a_i - a_j|),
+    $$
+
+    a Gauss-Markov (Matern-1/2 / AR(1)) covariance on a *learned* 1-D ordering of
+    the parameters, parameterised by only ``3 * n_params`` numbers ``(a, w, u)``
+    (with ``d = softplus(u) + eps``).  This captures off-diagonal curvature that a
+    diagonal Laplace discards, while its 1-D state-space structure yields an
+    ``O(n_params)`` log-determinant for the marginal likelihood.
+
+    Diagonal Laplace is the special case ``w = 0``; full Laplace is recovered as
+    the (dense) target the LCM is fit to.  The structured matrix is fit by
+    minimising the Frobenius distance ``||A - H||_F^2`` to the accumulated GGN,
+    exactly the objective of Appendix A of the paper.
+
+    Because the fit currently materialises the dense GGN, this class targets the
+    moderate-parameter regime -- most naturally the last-layer variant
+    :class:`~laplace.lllaplace.LCMLLLaplace` or small networks. The learned
+    covariance model itself stores only ``3 * n_params`` values and exposes
+    near-linear primitives (see :mod:`laplace.lcm`).
+
+    Additional parameters (beyond :class:`FullLaplace`)
+    ---------------------------------------------------
+    lcm_steps : int, default=500
+        Adam steps for fitting the LCM to the GGN.
+    lcm_lr : float, default=1e-2
+        Learning rate for the LCM fit.
+    lcm_eps : float, default=1e-6
+        Floor for the diagonal term ``d``.
+    lcm_init_a_scale : float, default=1.0
+        Scale of the initial ``linspace`` latent coordinates.
+    lcm_fast_logdet : bool, default=True
+        Use the ``O(n_params)`` Kalman log-determinant for the marginal
+        likelihood (validated to match the dense log-determinant).
+    """
+
+    _key = ("all", "lcm")
+
+    def __init__(
+        self,
+        model: nn.Module,
+        likelihood: Likelihood | str,
+        sigma_noise: float | torch.Tensor = 1.0,
+        prior_precision: float | torch.Tensor = 1.0,
+        prior_mean: float | torch.Tensor = 0.0,
+        temperature: float = 1.0,
+        enable_backprop: bool = False,
+        dict_key_x: str = "input_ids",
+        dict_key_y: str = "labels",
+        backend: type[CurvatureInterface] | None = None,
+        backend_kwargs: dict[str, Any] | None = None,
+        lcm_steps: int = 500,
+        lcm_lr: float = 1e-2,
+        lcm_eps: float = 1e-6,
+        lcm_init_a_scale: float = 1.0,
+        lcm_fast_logdet: bool = True,
+    ):
+        super().__init__(
+            model,
+            likelihood,
+            sigma_noise,
+            prior_precision,
+            prior_mean,
+            temperature,
+            enable_backprop,
+            dict_key_x,
+            dict_key_y,
+            backend,
+            backend_kwargs,
+        )
+        self.lcm_steps = lcm_steps
+        self.lcm_lr = lcm_lr
+        self.lcm_eps = lcm_eps
+        self.lcm_init_a_scale = lcm_init_a_scale
+        self.lcm_fast_logdet = lcm_fast_logdet
+        self.lcm = None
+        # relative Frobenius error ||A - H||_F / ||H||_F of the structured fit
+        self.lcm_fit_error_: float | None = None
+
+    def fit(
+        self,
+        train_loader: DataLoader,
+        override: bool = True,
+        progress_bar: bool = False,
+    ) -> None:
+        super().fit(train_loader, override=override, progress_bar=progress_bar)
+        self._fit_lcm()
+
+    def _fit_lcm(self) -> None:
+        from laplace.lcm import LCMCovariance
+
+        H = self.H.detach().to(torch.float64)
+        H = 0.5 * (H + H.T)  # symmetrise the accumulated GGN
+        self.lcm = LCMCovariance(
+            self.n_params,
+            eps=self.lcm_eps,
+            init_a_scale=self.lcm_init_a_scale,
+            dtype=torch.float64,
+        ).to(self._device)
+        self.lcm_fit_error_ = self.lcm.fit_dense(
+            H, n_steps=self.lcm_steps, lr=self.lcm_lr
+        )
+        if self.lcm_fit_error_ > 0.5:
+            warnings.warn(
+                f"LCM structured fit left a large relative error "
+                f"({self.lcm_fit_error_:.2f}); the curvature may not be well "
+                "described by a single 1-D Gauss-Markov chain. Consider more "
+                "`lcm_steps`, a per-layer/subnetwork split, or another structure."
+            )
+        # Replace the dense GGN by its LCM reconstruction so the inherited
+        # FullLaplace machinery (posterior scale, sampling, functional variance)
+        # operates exactly on the *structured* curvature.
+        self.H = self.lcm.dense().to(self._dtype).to(self._device)
+        self._posterior_scale = None
+
+    @property
+    def log_det_posterior_precision(self) -> torch.Tensor:
+        """Log-det of the posterior precision, via the ``O(n_params)`` Kalman path.
+
+        The posterior precision ``H_factor * A + diag(prior)`` stays in the LCM
+        family (same ``a``, scaled ``w``, shifted ``d``), so its log-determinant
+        is evaluated in linear time without forming or factorising a dense matrix.
+        """
+        if self.lcm is not None and self.lcm_fast_logdet:
+            from laplace.lcm import logdet_from_params
+
+            prior = self.prior_precision_diag.to(torch.float64)
+            h_factor = self._H_factor.to(torch.float64)
+            a, w, d = self.lcm.scaled_params(h_factor, prior)
+            return logdet_from_params(a, w, d).to(self._dtype)
+        return super().log_det_posterior_precision
+
+
 class KronLaplace(ParametricLaplace):
     """Laplace approximation with Kronecker factored log likelihood Hessian approximation
     and hence posterior precision.

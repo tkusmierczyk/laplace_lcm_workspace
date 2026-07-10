@@ -13,15 +13,18 @@ from laplace.baselaplace import (
     FullLaplace,
     FunctionalLaplace,
     KronLaplace,
+    LCMLaplace,
     LowRankLaplace,
     ParametricLaplace,
 )
 from laplace.laplace import Laplace
+from laplace.lcm import LCMCovariance
 from laplace.lllaplace import (
     DiagLLLaplace,
     FullLLLaplace,
     FunctionalLLLaplace,
     KronLLLaplace,
+    LCMLLLaplace,
     LLLaplace,
 )
 from laplace.marglik_training import marglik_training
@@ -44,11 +47,14 @@ __all__ = [
     "KronLaplace",
     "DiagLaplace",
     "FunctionalLaplace",
-    "LowRankLaplace",  # all-weights
+    "LowRankLaplace",
+    "LCMLaplace",  # all-weights
+    "LCMCovariance",  # structured covariance model
     "LLLaplace",  # base-class last-layer
     "FullLLLaplace",
     "KronLLLaplace",
     "DiagLLLaplace",
+    "LCMLLLaplace",
     "FunctionalLLLaplace",  # last-layer
     "SubnetLaplace",  # base-class subnetwork
     "FullSubnetLaplace",

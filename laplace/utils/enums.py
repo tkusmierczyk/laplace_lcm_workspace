@@ -29,6 +29,9 @@ class HessianStructure(str, Enum):
     LOWRANK = "lowrank"
     """Low-rank Hessian."""
 
+    LCM = "lcm"
+    """Laplace-Covariance-Model structured Hessian (tridiagonal-precision / Gauss-Markov)."""
+
     GP = "gp"
     """Functional Laplace."""
 
