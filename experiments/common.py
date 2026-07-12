@@ -1,0 +1,224 @@
+"""Shared harness for evaluating the LCM Laplace approximation against baselines.
+
+Provides: reproducible seeding, data utilities, MAP training, a uniform
+Laplace-fitting + marginal-likelihood tuning protocol for every structure
+(MAP / diag / kron / lowrank / full / lcm), and the evaluation metrics used
+across experiments (regression test-LL & RMSE, classification NLL/ECE/OOD-AUROC,
+and posterior-fidelity KL / Frobenius to the exact full Laplace).
+"""
+from __future__ import annotations
+
+import math
+import time
+
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+
+from laplace import Laplace
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Human-readable names and (subset, structure) for the Laplace factory.
+METHODS = {
+    "MAP": None,
+    "Diag": ("diag",),
+    "KFAC": ("kron",),
+    "Full": ("full",),
+    "LCM": ("lcm",),
+}
+
+
+def set_seed(seed: int) -> None:
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+# ------------------------------------------------------------------ data helpers
+def standardize(train: np.ndarray, *others: np.ndarray):
+    mu, sd = train.mean(0, keepdims=True), train.std(0, keepdims=True) + 1e-8
+    return [( (a - mu) / sd ) for a in (train, *others)], (mu, sd)
+
+
+def loader(X, y, batch_size=128, shuffle=False):
+    X = torch.as_tensor(np.asarray(X), dtype=torch.float32)
+    y = torch.as_tensor(np.asarray(y))
+    ds = TensorDataset(X, y)
+    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle)
+
+
+# ------------------------------------------------------------------ MAP training
+def train_map(model, train_loader, epochs, lr, weight_decay, likelihood):
+    model = model.to(DEVICE).train()
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    loss_fn = nn.MSELoss() if likelihood == "regression" else nn.CrossEntropyLoss()
+    for _ in range(epochs):
+        for xb, yb in train_loader:
+            xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+            opt.zero_grad()
+            out = model(xb)
+            loss = loss_fn(out, yb)
+            loss.backward()
+            opt.step()
+    return model.eval()
+
+
+# ------------------------------------------- uniform Laplace fit + marglik tuning
+def fit_laplace(model, train_loader, structure, likelihood, subset="all",
+                tune_steps=200, tune_lr=1e-1, tune_sigma=True, common_prior=None,
+                lcm_steps=600, lcm_lr=3e-2, backend=None):
+    """Fit one Laplace variant and (unless `common_prior` is given) tune its
+    prior precision -- and, for regression, its observation noise -- by maximising
+    the Laplace marginal likelihood. Returns (la, fit_seconds)."""
+    kw = {}
+    if structure == "lcm":
+        kw.update(lcm_steps=lcm_steps, lcm_lr=lcm_lr)
+    if backend is not None:
+        kw["backend"] = backend
+    t0 = time.perf_counter()
+    la = Laplace(model, likelihood, subset_of_weights=subset,
+                 hessian_structure=structure, **kw)
+    la.fit(train_loader)
+    fit_s = time.perf_counter() - t0
+
+    if common_prior is not None:
+        la.prior_precision = common_prior
+        return la, fit_s
+
+    # Joint marglik optimisation of log prior-precision (+ log sigma for regression),
+    # identical across all structures for a fair comparison.
+    log_prior = torch.zeros(1, device=DEVICE, requires_grad=True)
+    params = [log_prior]
+    if likelihood == "regression" and tune_sigma:
+        log_sigma = torch.zeros(1, device=DEVICE, requires_grad=True)
+        params.append(log_sigma)
+    else:
+        log_sigma = None
+    opt = torch.optim.Adam(params, lr=tune_lr)
+    for _ in range(tune_steps):
+        opt.zero_grad()
+        pp = log_prior.exp()
+        sn = log_sigma.exp() if log_sigma is not None else None
+        nmll = -la.log_marginal_likelihood(prior_precision=pp, sigma_noise=sn)
+        nmll.backward()
+        opt.step()
+    with torch.no_grad():
+        la.prior_precision = log_prior.exp().detach()
+        if log_sigma is not None:
+            la.sigma_noise = log_sigma.exp().detach()
+    return la, fit_s
+
+
+# ------------------------------------------------------------ regression metrics
+@torch.no_grad()
+def regression_predictive(la, X):
+    """GLM predictive mean and total variance (functional + observation noise)."""
+    X = torch.as_tensor(np.asarray(X), dtype=torch.float32, device=DEVICE)
+    f_mu, f_var = la(X, pred_type="glm")
+    f_mu = f_mu.squeeze(-1)
+    f_var = f_var.reshape(f_mu.shape[0], -1)[:, 0]
+    total_var = f_var + la.sigma_noise.squeeze() ** 2
+    return f_mu.cpu().numpy(), total_var.cpu().numpy()
+
+
+def map_regression_predictive(model, X, sigma):
+    with torch.no_grad():
+        X = torch.as_tensor(np.asarray(X), dtype=torch.float32, device=DEVICE)
+        mu = model(X).squeeze(-1).cpu().numpy()
+    return mu, np.full_like(mu, float(sigma) ** 2)
+
+
+def gaussian_test_ll(mu, var, y, y_sd):
+    """Mean test log-likelihood in the *original* (unstandardised) target scale."""
+    y = np.asarray(y).reshape(-1)
+    # standardised-target LL, then correct for the y-standardisation Jacobian.
+    ll = -0.5 * (np.log(2 * np.pi * var) + (y - mu) ** 2 / var)
+    return float(ll.mean() - np.log(y_sd))
+
+
+def rmse(mu, y, y_sd):
+    y = np.asarray(y).reshape(-1)
+    return float(np.sqrt(np.mean((mu - y) ** 2)) * y_sd)
+
+
+# -------------------------------------------------------- classification metrics
+@torch.no_grad()
+def classification_probs(la, X, link="probit", batch=512):
+    X = torch.as_tensor(np.asarray(X), dtype=torch.float32)
+    outs = []
+    for i in range(0, len(X), batch):
+        xb = X[i:i + batch].to(DEVICE)
+        outs.append(la(xb, pred_type="glm", link_approx=link).cpu())
+    return torch.cat(outs).numpy()
+
+
+@torch.no_grad()
+def map_probs(model, X, batch=512):
+    X = torch.as_tensor(np.asarray(X), dtype=torch.float32)
+    outs = []
+    for i in range(0, len(X), batch):
+        xb = X[i:i + batch].to(DEVICE)
+        outs.append(torch.softmax(model(xb), -1).cpu())
+    return torch.cat(outs).numpy()
+
+
+def accuracy(probs, y):
+    return float((probs.argmax(1) == np.asarray(y)).mean())
+
+
+def nll_classification(probs, y):
+    y = np.asarray(y)
+    p = np.clip(probs[np.arange(len(y)), y], 1e-12, 1.0)
+    return float(-np.log(p).mean())
+
+
+def ece(probs, y, n_bins=15):
+    y = np.asarray(y)
+    conf = probs.max(1)
+    pred = probs.argmax(1)
+    acc = (pred == y).astype(float)
+    bins = np.linspace(0, 1, n_bins + 1)
+    e = 0.0
+    for lo, hi in zip(bins[:-1], bins[1:]):
+        m = (conf > lo) & (conf <= hi)
+        if m.any():
+            e += m.mean() * abs(acc[m].mean() - conf[m].mean())
+    return float(e)
+
+
+def ood_auroc(probs_in, probs_out):
+    """AUROC separating in- vs out-of-distribution by predictive confidence
+    (max prob). Higher = better OOD detection."""
+    from sklearn.metrics import roc_auc_score
+    s_in, s_out = probs_in.max(1), probs_out.max(1)
+    # in-dist should be MORE confident -> use negative confidence as OOD score
+    scores = np.concatenate([-s_in, -s_out])
+    labels = np.concatenate([np.zeros(len(s_in)), np.ones(len(s_out))])
+    return float(roc_auc_score(labels, scores))
+
+
+# ------------------------------------------------------------- posterior fidelity
+@torch.no_grad()
+def dense_posterior_cov(la):
+    """Dense posterior covariance for *any* structure (diag/kron/full/lcm),
+    obtained uniformly as ``J Cov J^T`` with ``J = I`` (identity Jacobians)."""
+    P = la.n_params
+    eye = torch.eye(P, device=la._device, dtype=la._dtype).reshape(P, 1, P)
+    return la.functional_covariance(eye).double().cpu()
+
+
+def kl_gaussian(cov_a, cov_f):
+    """KL( N(m, cov_a) || N(m, cov_f) ) for shared mean m."""
+    cov_a, cov_f = cov_a.double(), cov_f.double()
+    d = cov_f.shape[0]
+    sign, logdet_f = torch.linalg.slogdet(cov_f)
+    _, logdet_a = torch.linalg.slogdet(cov_a)
+    sol = torch.linalg.solve(cov_f, cov_a)
+    return float(0.5 * (torch.trace(sol) - d + logdet_f - logdet_a))
+
+
+def frob_rel(A, B):
+    A, B = A.double(), B.double()
+    return float((A - B).norm() / B.norm())
