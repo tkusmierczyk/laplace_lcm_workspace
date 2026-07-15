@@ -20,7 +20,7 @@ from laplace import (
     LCMLaplace,
     LCMLLLaplace,
 )
-from laplace.lcm import kernel_matvec, logdet_from_params
+from laplace.lcm import kernel_matvec, logdet_from_params, logdet_parallel
 
 DT = torch.float64
 
@@ -117,6 +117,23 @@ def test_matrix_free_fit_matches_dense_fit():
     b = LCMCovariance(C, dtype=DT)
     b.fit_frobenius(V, n_steps=1200, lr=5e-2)
     assert (a.dense() - b.dense()).norm() / a.dense().norm() < 0.06
+
+
+def test_parallel_logdet_matches_sequential_and_dense():
+    """Associative-scan log-det == sequential Kalman == dense, and stays
+    differentiable (for marginal-likelihood tuning)."""
+    for C in [17, 128, 1000]:
+        lcm = _random_lcm(C)
+        a, w, d = lcm.a, lcm.w, lcm.d
+        par = logdet_parallel(a, w, d)
+        assert torch.allclose(par, logdet_from_params(a, w, d), atol=1e-6)
+        if C <= 128:
+            assert torch.allclose(par, torch.logdet(lcm.dense()), atol=1e-6)
+    prior = torch.tensor(0.7, requires_grad=True)
+    lcm = _random_lcm(20)
+    logdet_parallel(lcm.a.detach(), lcm.w.detach(),
+                    lcm.d.detach() + prior).backward()
+    assert prior.grad is not None and torch.isfinite(prior.grad)
 
 
 def test_logdet_is_differentiable():

@@ -97,8 +97,64 @@ def kalman_stats(
 
 
 def logdet_from_params(a: torch.Tensor, w: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
-    """``log det (diag(d) + diag(w) K(a) diag(w))`` in ``O(dim)``."""
+    """``log det (diag(d) + diag(w) K(a) diag(w))`` in ``O(dim)`` (sequential Kalman)."""
     S, _ = kalman_stats(a, w, d, None)
+    return torch.log(S).sum()
+
+
+def _parallel_prefix_2x2(M: torch.Tensor) -> torch.Tensor:
+    """Inclusive prefix products of a sequence of 2x2 matrices via a Hillis-Steele
+    associative scan: returns ``C`` with ``C[k] = M[k] @ M[k-1] @ ... @ M[0]`` in
+    ``O(log n)`` sequential steps (vs. ``O(n)`` for a Python loop). Each partial
+    product is rescaled to avoid overflow; the rescaling cancels in the Mobius
+    ratio it is used for."""
+    n = M.shape[-3]
+    res = M
+    step = 1
+    while step < n:
+        left = res[..., :-step, :, :]
+        right = res[..., step:, :, :]
+        comb = right @ left
+        norm = comb.abs().amax(dim=(-2, -1), keepdim=True).clamp(min=1e-30)
+        comb = comb / norm
+        res = torch.cat([res[..., :step, :, :], comb], dim=-3)
+        step *= 2
+    return res
+
+
+def logdet_parallel(a: torch.Tensor, w: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """``log det (diag(d) + diag(w) K(a) diag(w))`` via an associative 2x2-matrix
+    scan of the Kalman variance (Riccati) recursion -- ``O(dim log dim)`` *depth*,
+    fully vectorised (no Python loop over dimensions). Numerically matches
+    :func:`logdet_from_params`; preferable for large ``dim``."""
+    a_s, idx = torch.sort(a)
+    w_s, d_s = w[idx], d[idx]
+    C = a_s.shape[-1]
+    dt = (a_s[1:] - a_s[:-1]).clamp(min=1e-12)
+    phi2 = torch.exp(-2.0 * dt)
+    q = (1.0 - phi2).clamp(min=1e-12)
+
+    M = torch.zeros(C, 2, 2, dtype=w_s.dtype, device=w_s.device)
+    M[0, 0, 1] = d_s[0]
+    M[0, 1, 1] = w_s[0] ** 2 + d_s[0]
+    w2 = w_s[1:] ** 2
+    M[1:, 0, 0] = d_s[1:] * phi2
+    M[1:, 0, 1] = d_s[1:] * q
+    M[1:, 1, 0] = w2 * phi2
+    M[1:, 1, 1] = w2 * q + d_s[1:]
+
+    Ccum = _parallel_prefix_2x2(M)
+    denom = (Ccum[:, 1, 0] + Ccum[:, 1, 1]).clamp(min=1e-30)
+    P_filt = ((Ccum[:, 0, 0] + Ccum[:, 0, 1]) / denom).clamp(min=0.0)
+
+    P_prev = torch.ones(C, dtype=w_s.dtype, device=w_s.device)
+    P_prev[1:] = P_filt[:-1]
+    phi2v = torch.ones(C, dtype=w_s.dtype, device=w_s.device)
+    phi2v[1:] = phi2
+    qv = torch.zeros(C, dtype=w_s.dtype, device=w_s.device)
+    qv[1:] = q
+    P_pred = (phi2v * P_prev + qv).clamp(min=1e-12)
+    S = (w_s**2 * P_pred + d_s).clamp(min=1e-12)
     return torch.log(S).sum()
 
 

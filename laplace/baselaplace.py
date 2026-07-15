@@ -1778,12 +1778,13 @@ class LCMLaplace(FullLaplace):
         is evaluated in linear time without forming or factorising a dense matrix.
         """
         if self.lcm is not None and self.lcm_fast_logdet:
-            from laplace.lcm import logdet_from_params
+            from laplace.lcm import logdet_parallel
 
             prior = self.prior_precision_diag.to(torch.float64)
             h_factor = self._H_factor.to(torch.float64)
             a, w, d = self.lcm.scaled_params(h_factor, prior)
-            return logdet_from_params(a, w, d).to(self._dtype)
+            # associative-scan Kalman log-det: O(n_params log n_params) depth
+            return logdet_parallel(a, w, d).to(self._dtype)
         return super().log_det_posterior_precision
 
 
