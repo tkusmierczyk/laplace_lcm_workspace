@@ -40,7 +40,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-__all__ = ["LCMCovariance", "kernel_matvec", "kalman_stats", "logdet_from_params"]
+__all__ = [
+    "LCMCovariance",
+    "kernel_matvec",
+    "kalman_stats",
+    "logdet_from_params",
+    "logdet_parallel",
+]
+
+
+def _inverse_softplus(x: torch.Tensor, threshold: float = 20.0) -> torch.Tensor:
+    """Numerically stable inverse of ``softplus``: returns ``y`` with
+    ``softplus(y) == x`` for ``x > 0``. Mirrors PyTorch's own stable ``softplus``
+    threshold: for large ``x``, ``softplus(y) = log1p(exp(y)) ~= y``, so inverting
+    via ``log(expm1(x))`` directly would overflow (``expm1`` of a large number is
+    itself already ``inf`` in float64 well before 1000) -- used past the threshold
+    the identity is exact to float precision, so we switch to it instead.
+    """
+    return torch.where(x > threshold, x, torch.log(torch.expm1(x.clamp(min=1e-12))))
 
 
 def kalman_stats(
@@ -326,6 +343,26 @@ class LCMCovariance(nn.Module):
         return x
 
     # --------------------------------------------------------------- fitting
+    @torch.no_grad()
+    def _auto_init_scale(self, diag_estimate: torch.Tensor, nugget_frac: float = 0.15) -> None:
+        """Rescale ``w`` (and the nugget ``d``) from a per-dimension diagonal
+        estimate of the fitting target, keeping the (data-independent) latent
+        ordering ``a`` set at construction time.
+
+        Without this, ``w`` keeps its fixed default (``init_w=0.1``) regardless of
+        the target's actual magnitude. For gradient-based fitting that mismatch is
+        not just slow to correct -- a target diagonal many orders of magnitude
+        above ``w^2`` produces a huge initial loss/gradient that can make Adam
+        diverge (rather than merely converge slowly), silently producing a much
+        worse fit than a correctly-scaled initialization. Both :meth:`fit_dense`
+        and :meth:`fit_frobenius` call this by default (``auto_init=True``).
+        """
+        diag_estimate = diag_estimate.clamp(min=1e-12).to(self.w.dtype)
+        w0 = torch.sqrt((1.0 - nugget_frac) * diag_estimate)
+        d0 = (nugget_frac * diag_estimate).clamp(min=2 * self.eps) - self.eps
+        self.w.copy_(w0)
+        self.u_raw.copy_(_inverse_softplus(d0))
+
     def fit_dense(
         self,
         target: torch.Tensor,
@@ -333,12 +370,25 @@ class LCMCovariance(nn.Module):
         lr: float = 1e-2,
         tol: float = 1e-9,
         verbose: bool = False,
+        auto_init: bool = True,
     ) -> float:
         """Fit ``(a, w, u)`` to a dense PSD target by minimising ``||A - target||_F^2``.
 
-        Returns the final relative Frobenius error ``||A - target||_F / ||target||_F``.
+        Parameters
+        ----------
+        auto_init : bool, default=True
+            Rescale ``w``/``d`` from ``target``'s diagonal before optimizing (see
+            :meth:`_auto_init_scale`). Strongly recommended; disable only to
+            reproduce a specific hand-set initialization.
+
+        Returns
+        -------
+        rel_error : float
+            Final relative Frobenius error ``||A - target||_F / ||target||_F``.
         """
         target = target.to(self.a.dtype)
+        if auto_init:
+            self._auto_init_scale(target.diagonal())
         opt = torch.optim.Adam([self.a, self.w, self.u_raw], lr=lr)
         target_norm = target.norm().clamp(min=1e-12)
         prev = None
@@ -363,6 +413,7 @@ class LCMCovariance(nn.Module):
         lr: float = 1e-2,
         batch_size: int | None = None,
         verbose: bool = False,
+        auto_init: bool = True,
     ) -> float:
         """Matrix-free fit to the empirical second moment of ``vectors``.
 
@@ -377,6 +428,12 @@ class LCMCovariance(nn.Module):
             ``(N, dim)`` matrix of (already centred) vectors ``v_i``.
         batch_size : int, optional
             Mini-batch of vectors per step (stochastic fit); defaults to all.
+        auto_init : bool, default=True
+            Rescale ``w``/``d`` from the empirical diagonal of ``S_hat`` (i.e.
+            ``mean(vectors**2, dim=0)``) before optimizing -- see
+            :meth:`_auto_init_scale`. Without this, a target whose scale differs
+            from the fixed default (``init_w=0.1``) can make Adam diverge rather
+            than converge, silently producing a much worse fit.
 
         Returns
         -------
@@ -385,6 +442,8 @@ class LCMCovariance(nn.Module):
         """
         vectors = vectors.to(self.a.dtype)
         N = vectors.shape[0]
+        if auto_init:
+            self._auto_init_scale((vectors**2).mean(dim=0))
         opt = torch.optim.Adam([self.a, self.w, self.u_raw], lr=lr)
         last = float("nan")
         for step in range(n_steps):

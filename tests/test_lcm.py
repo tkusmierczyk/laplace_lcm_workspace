@@ -105,6 +105,25 @@ def test_fit_dense_recovers_exponential_target():
     assert (lcm.dense() - H).norm() / H.norm() < err_diag
 
 
+def test_auto_init_prevents_divergence_on_mis_scaled_target():
+    """A target whose scale is far from the fixed default init (init_w=0.1) must
+    still fit well with auto_init (the default) -- without it, Adam can diverge
+    rather than merely converge slowly, silently producing a much worse fit."""
+    C = 80
+    coord = torch.linspace(-2, 2, C)
+    K = torch.exp(-torch.abs(coord[:, None] - coord[None, :]))
+    big = 5000.0  # far from the fixed default init scale
+    H = big * (torch.diag(0.1 + 0.2 * torch.rand(C)) + K)
+
+    lcm_auto = LCMCovariance(C, dtype=DT)
+    rel_auto = lcm_auto.fit_dense(H, n_steps=300, lr=5e-2, auto_init=True)
+    lcm_off = LCMCovariance(C, dtype=DT)
+    rel_off = lcm_off.fit_dense(H, n_steps=300, lr=5e-2, auto_init=False)
+
+    assert rel_auto < 0.05
+    assert rel_auto < rel_off  # auto_init must not be worse than the naive default
+
+
 def test_matrix_free_fit_matches_dense_fit():
     C, N = 50, 4000
     coord = torch.linspace(-2, 2, C)
