@@ -1,0 +1,834 @@
+<title>Structured-Covariance Laplace (LCM) — Full Project Report</title>
+<style>
+  :root{
+    --ground:#f7f8fa; --panel:#ffffff; --panel-2:#f0f2f6;
+    --ink:#171b23; --ink-2:#4a5462; --ink-3:#6f7987;
+    --rule:#dfe3ea; --rule-2:#c9cfda;
+    --accent:#3f5fa8; --accent-soft:#e9edf7; --accent-line:#b9c6e4;
+    --pos:#2c7a5b; --pos-soft:#e6f2ec;
+    --warn:#9a6b18; --warn-soft:#f6efdf;
+    --neg:#a8453a; --neg-soft:#f8e9e7;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:Charter,"Bitstream Charter","Iowan Old Style",Georgia,"Times New Roman",serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#12151b; --panel:#191d25; --panel-2:#20252f;
+      --ink:#e8ecf2; --ink-2:#a9b3c1; --ink-3:#818b99;
+      --rule:#262c36; --rule-2:#353d4a;
+      --accent:#8fa9e0; --accent-soft:#1b2436; --accent-line:#33405c;
+      --pos:#67c298; --pos-soft:#14251e;
+      --warn:#d0a44c; --warn-soft:#2a2314;
+      --neg:#df8377; --neg-soft:#2c1a18;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#12151b; --panel:#191d25; --panel-2:#20252f;
+    --ink:#e8ecf2; --ink-2:#a9b3c1; --ink-3:#818b99;
+    --rule:#262c36; --rule-2:#353d4a;
+    --accent:#8fa9e0; --accent-soft:#1b2436; --accent-line:#33405c;
+    --pos:#67c298; --pos-soft:#14251e;
+    --warn:#d0a44c; --warn-soft:#2a2314;
+    --neg:#df8377; --neg-soft:#2c1a18;
+  }
+  :root[data-theme="light"]{
+    --ground:#f7f8fa; --panel:#ffffff; --panel-2:#f0f2f6;
+    --ink:#171b23; --ink-2:#4a5462; --ink-3:#6f7987;
+    --rule:#dfe3ea; --rule-2:#c9cfda;
+    --accent:#3f5fa8; --accent-soft:#e9edf7; --accent-line:#b9c6e4;
+    --pos:#2c7a5b; --pos-soft:#e6f2ec;
+    --warn:#9a6b18; --warn-soft:#f6efdf;
+    --neg:#a8453a; --neg-soft:#f8e9e7;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--ink);font-family:var(--serif);
+    font-size:17px;line-height:1.68;margin:0;-webkit-font-smoothing:antialiased}
+  .page{max-width:1080px;margin:0 auto;padding:clamp(1.5rem,4vw,3.5rem) clamp(1.1rem,4vw,2.2rem)}
+  .col{max-width:68ch}
+  p{margin:.75rem 0}
+  h1,h2,h3,h4{font-family:var(--sans);text-wrap:balance;line-height:1.2;font-weight:640}
+  h1{font-size:clamp(1.9rem,4.4vw,2.6rem);letter-spacing:-.022em;margin:.3em 0 .3em}
+  h2{font-size:clamp(1.3rem,2.8vw,1.65rem);letter-spacing:-.015em;margin:0 0 .3rem}
+  h3{font-size:1.06rem;letter-spacing:-.008em;margin:1.6rem 0 .3rem}
+  h4{font-size:.94rem;letter-spacing:-.005em;margin:1.1rem 0 .2rem}
+  a{color:var(--accent)}
+  code{font-family:var(--mono);font-size:.85em;background:var(--panel-2);
+    padding:.1em .36em;border-radius:4px}
+  .eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);font-weight:700}
+  .muted{color:var(--ink-2)}
+  .small{font-size:.9rem}
+
+  header.top{border-bottom:2px solid var(--rule-2);padding-bottom:1.5rem;margin-bottom:1.8rem}
+  .meta{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.9rem}
+  .tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.05em;color:var(--ink-2);
+    border:1px solid var(--rule-2);border-radius:3px;padding:.18rem .5rem}
+
+  .verdict{background:var(--panel);border:1px solid var(--rule);border-left:4px solid var(--accent);
+    border-radius:3px;padding:1.15rem 1.3rem;margin:1.6rem 0}
+  .verdict h2{margin-bottom:.4rem}
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(198px,1fr));gap:.75rem;margin:1.4rem 0}
+  .kpi{background:var(--panel);border:1px solid var(--rule);border-radius:3px;padding:.85rem .95rem;
+    border-top:3px solid var(--edge,var(--accent))}
+  .kpi .lab{font-family:var(--mono);font-size:.67rem;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink-3)}
+  .kpi .val{font-family:var(--sans);font-weight:660;font-size:1.02rem;margin:.28rem 0 .18rem;line-height:1.28}
+  .kpi p{margin:0;font-size:.86rem;color:var(--ink-2);line-height:1.5}
+  .e-pos{--edge:var(--pos)} .e-neg{--edge:var(--neg)} .e-warn{--edge:var(--warn)}
+
+  .chip{display:inline-block;font-family:var(--mono);font-size:.68rem;font-weight:700;
+    letter-spacing:.05em;padding:.16rem .5rem;border-radius:3px;text-transform:uppercase}
+  .c-pos{background:var(--pos-soft);color:var(--pos)}
+  .c-neg{background:var(--neg-soft);color:var(--neg)}
+  .c-warn{background:var(--warn-soft);color:var(--warn)}
+  .c-inf{background:var(--accent-soft);color:var(--accent)}
+
+  section{margin:2.8rem 0}
+  .rule{height:1px;background:var(--rule);border:0;margin:2.4rem 0}
+
+  /* experiment blocks */
+  .exp{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
+    padding:1.2rem 1.35rem;margin:1.1rem 0}
+  .exp-head{display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap;
+    border-bottom:1px solid var(--rule);padding-bottom:.6rem;margin-bottom:.5rem}
+  .exp-id{font-family:var(--mono);font-size:.78rem;font-weight:700;color:var(--accent);
+    letter-spacing:.04em;white-space:nowrap}
+  .exp-head h3{margin:0;flex:1;min-width:12rem;font-size:1.04rem}
+  .anat{display:grid;gap:.15rem;margin:.7rem 0}
+  .anat > div{display:grid;grid-template-columns:5.6rem 1fr;gap:.7rem;align-items:baseline;
+    padding:.32rem 0;border-bottom:1px dotted var(--rule)}
+  .anat > div:last-child{border-bottom:0}
+  .anat dt,.anat .k{font-family:var(--mono);font-size:.67rem;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--ink-3);padding-top:.2rem}
+  .anat .v{font-size:.95rem;line-height:1.6}
+  .anat .v p{margin:0}
+  @media (max-width:560px){.anat > div{grid-template-columns:1fr;gap:.1rem}}
+
+  /* tables */
+  .tw{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--panel);
+    margin:1rem 0}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;font-variant-numeric:tabular-nums}
+  caption{caption-side:top;text-align:left;font-family:var(--mono);font-size:.7rem;
+    letter-spacing:.05em;color:var(--ink-3);padding:.65rem .85rem .1rem;text-transform:uppercase}
+  th,td{padding:.44rem .8rem;text-align:right;border-bottom:1px solid var(--rule);white-space:nowrap}
+  thead th{font-family:var(--mono);font-size:.68rem;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--rule-2)}
+  tbody tr:last-child td{border-bottom:0}
+  th:first-child,td:first-child{text-align:left;font-family:var(--sans);font-weight:600}
+  td{font-family:var(--mono);font-size:.84rem}
+  .ours{background:var(--accent-soft)}
+  th.ours{color:var(--accent)}
+  .best{color:var(--pos);font-weight:700}
+  .bad{color:var(--neg)}
+  .tnote{font-size:.83rem;color:var(--ink-2);padding:.5rem .85rem .7rem;line-height:1.55}
+
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);
+    padding:.75rem 1rem;border-radius:0 3px 3px 0;margin:1.1rem 0;font-size:.94rem}
+  .callout.pos{border-color:var(--pos);background:var(--pos-soft)}
+  .callout.neg{border-color:var(--neg);background:var(--neg-soft)}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  .callout .lb{font-family:var(--mono);font-size:.67rem;letter-spacing:.1em;text-transform:uppercase;
+    font-weight:700;display:block;margin-bottom:.15rem;color:var(--accent)}
+  .callout.pos .lb{color:var(--pos)} .callout.neg .lb{color:var(--neg)} .callout.warn .lb{color:var(--warn)}
+  .callout p{margin:.2rem 0}
+
+  ul,ol{padding-left:1.15rem;max-width:68ch}
+  li{margin:.3rem 0}
+  .phase{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-3);border-top:1px solid var(--rule-2);padding-top:.5rem;margin:2.2rem 0 .3rem}
+  footer{border-top:2px solid var(--rule-2);margin-top:3rem;padding-top:1.2rem;
+    color:var(--ink-2);font-size:.88rem}
+  .eq{font-family:var(--mono);font-size:.86rem;background:var(--panel-2);border:1px solid var(--rule);
+    border-radius:3px;padding:.7rem .9rem;overflow-x:auto;margin:.8rem 0}
+</style>
+
+<div class="page">
+
+<header class="top">
+  <div class="eyebrow">Project report · structured covariance for Bayesian deep learning</div>
+  <h1>Does a learned Gauss–Markov covariance help the Laplace approximation?</h1>
+  <p class="col muted">A complete account of an investigation into the <strong>Laplace Covariance
+  Model (LCM)</strong> — the structured covariance from <em>“Stop Marginalizing My Dreams”</em>
+  (arXiv:2605.11804), re-purposed from model inversion to Bayesian posterior approximation.
+  Eleven experiments, a library fork, four bugs, and a mostly-negative result that turns out to be
+  the interesting part.</p>
+  <div class="meta">
+    <span class="tag">11 experiments</span>
+    <span class="tag">laplace-torch fork</span>
+    <span class="tag">15 tests</span>
+    <span class="tag">4 bugs found</span>
+    <span class="tag">audited: 5 checks</span>
+    <span class="tag">verdict: workshop → TMLR</span>
+  </div>
+</header>
+
+<div class="verdict col">
+  <h2>The short version</h2>
+  <p>LCM is a correct, cheap, near-linear structured Gaussian. It approximates the exact posterior
+  <strong>far better than a diagonal</strong> (1.6–2.9× lower KL) at <code>3d</code> parameters.
+  But that fidelity gain <strong>does not transfer to predictive uncertainty</strong> in the way you
+  would hope: it is invisible to <em>marginal</em> metrics (NLL, calibration, single-point OOD) and
+  shows up only in <em>joint</em> predictions — and even there only when the variables have a
+  <strong>known</strong> 1-D ordering and the problem is well-determined (<code>n ≳ d</code>).</p>
+  <p>The method’s headline novelty — that the 1-D ordering is <strong>learned</strong> — does not
+  survive testing. Gradient descent cannot discover a latent ordering, and the kernel needs the
+  order to be ~99.9% correct before it beats a diagonal at all. Where the order <em>is</em> known,
+  LCM reduces to a classical banded / state-space-GP precision.</p>
+  <p>These conclusions were then <a href="#audit">attacked directly</a> — five checks looking for an
+  incorporation error or a formulation, scale or data choice that manufactured the negatives. All
+  five failed to overturn them. Notably, <strong>a larger model or a compute cluster provably cannot
+  help</strong>: the mismatch is representational, and it widens with scale.</p>
+</div>
+
+<div class="grid4">
+  <div class="kpi e-pos">
+    <div class="lab">Posterior fidelity</div>
+    <div class="val">1.6–2.9× better than diagonal</div>
+    <p>Consistent across all four settings. KFAC still better.</p>
+  </div>
+  <div class="kpi e-pos">
+    <div class="lab">Cost</div>
+    <div class="val">3<em>d</em> vs <em>d</em>² storage</div>
+    <p>Exact log-det where the dense posterior runs out of memory.</p>
+  </div>
+  <div class="kpi e-warn">
+    <div class="lab">Predictive UQ</div>
+    <div class="val">Joint only, modest</div>
+    <p>Ties diagonal on marginal metrics; joint gap-closed shrinks with <em>d</em>.</p>
+  </div>
+  <div class="kpi e-neg">
+    <div class="lab">Learned ordering</div>
+    <div class="val">Does no useful work</div>
+    <p>Recovery ≈ 0.03 vs the ≈ 0.999 the kernel requires.</p>
+  </div>
+  <div class="kpi e-pos">
+    <div class="lab">Audit</div>
+    <div class="val">Survives 5 checks</div>
+    <p>Port exact; formulation was the right call; scale cannot help.</p>
+  </div>
+</div>
+
+<hr class="rule">
+
+<!-- ============================= BACKGROUND ============================= -->
+<section id="background">
+  <div class="eyebrow">Orientation</div>
+  <h2>What LCM is, and why it looked promising</h2>
+  <div class="col">
+  <p>LCM parameterises a covariance over <code>d</code> variables with only <code>3d</code> numbers:</p>
+  </div>
+  <div class="eq col">A = diag(d) + diag(w) · K(a) · diag(w),&nbsp;&nbsp; K(a)<sub>ij</sub> = exp(−|a<sub>i</sub> − a<sub>j</sub>|)</div>
+  <div class="col">
+  <p>Each variable gets a scalar <strong>learned coordinate</strong> <code>a<sub>i</sub></code>, and
+  correlation decays exponentially with coordinate distance. The mathematical identity that makes it
+  fast: this is a <strong>Matérn-½ / Ornstein–Uhlenbeck Gaussian process on a line</strong>,
+  equivalently a Gauss–Markov (AR(1)) chain. Its precision is tridiagonal, and every operation you
+  need — sampling, log-density, log-determinant, quadratic forms — is exact in
+  <code>O(d)</code>–<code>O(d log d)</code> via the associated state-space model (a Kalman filter).</p>
+  <p>Why this was worth testing for Bayesian learning: a posterior over many correlated variables
+  needs exactly those operations, and a dense covariance is intractable past ~10<sup>4</sup>
+  parameters. LCM promised full-covariance structure at diagonal-like cost. It generalises a
+  diagonal covariance (the <code>w = 0</code> case) and is far cheaper than dense or KFAC.</p>
+  </div>
+
+  <h3>How everything was measured</h3>
+  <div class="col">
+  <p>Every method is fit to the <em>same</em> trained network with the <em>same</em> curvature
+  backend, differing only in covariance structure: <strong>MAP</strong> (no weight uncertainty),
+  <strong>Diag</strong> (the structure LCM generalises), <strong>KFAC</strong> (the strong
+  layer-structured competitor), <strong>Full</strong> (exact reference), and <strong>LCM</strong>.
+  Each method tunes its own prior precision — and, for regression, its noise — by maximising
+  <em>its own</em> marginal likelihood, so every baseline gets its best case. Fidelity experiments
+  instead fix a common prior, to isolate the curvature approximation from hyperparameter effects.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============================= EXPERIMENTS ============================= -->
+<section id="experiments">
+  <div class="eyebrow">The work</div>
+  <h2>Experiments, in the order they were run</h2>
+  <p class="col muted small">Each block follows the same anatomy: <strong>why</strong> the experiment
+  was run, <strong>what</strong> was actually done, the <strong>outcome</strong> (measured), and the
+  <strong>conclusion</strong> drawn. The sequence matters — later experiments exist because earlier
+  ones failed in specific, informative ways.</p>
+
+  <div class="phase">Phase 1 · Build the thing</div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">DEV</span>
+      <h3>Library integration: <code>hessian_structure="lcm"</code></h3>
+      <span class="chip c-inf">infrastructure</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Building standalone would have meant re-implementing (and re-validating) the predictive and marginal-likelihood machinery. Forking <code>laplace-torch</code> means LCM competes with diag/KFAC/full under one interface, on equal footing.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>A new <code>LCMCovariance</code> module (prefix-sum kernel matvec, Kalman + associative-scan log-determinant, AR(1) sampler, exact NLL, dense and matrix-free fitters), plus <code>LCMLaplace</code> and <code>LCMLLLaplace</code> classes. 15 tests check every fast primitive against a dense reference.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>All primitives match dense references to machine precision (kernel matvec ~4e-15; log-det; NLL vs <code>torch</code> MVN; sampler). Full pipeline runs end-to-end for all-weights and last-layer.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The implementation is correct. Everything that follows measures the <em>model</em>, not bugs — with four important exceptions found later (see <a href="#bugs">Bugs</a>).</p></div></div>
+    </div>
+  </div>
+
+  <div class="phase">Phase 2 · Evaluate it honestly</div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 1</span>
+      <h3>Posterior fidelity — how close is it to the exact posterior?</h3>
+      <span class="chip c-pos">positive</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Before asking whether LCM helps predictions, ask whether it actually captures the posterior better than a diagonal. This is the cleanest possible test of the covariance structure itself.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>On problems small enough that the exact full posterior is computable, fix a common prior across methods and measure <code>KL(approx ‖ full)</code>. Four settings (regression/classification × last-layer/all-weights), AR(1)-correlated features, 3 seeds.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>See table. LCM cuts diagonal's KL by <strong>1.6–2.9×</strong> everywhere. A correlation sweep showed diagonal degrading as curvature correlation grows (KL 57.9 → 76.7 as ρ: 0 → 0.95) while LCM stays flat (~20–30).</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The structure is real and captures genuine off-diagonal curvature. But KFAC — which exploits layer structure — is consistently better. Ordering: <code>KFAC &lt; LCM &lt; Diag</code>.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>KL to the full posterior · lower is better · 3 seeds</caption>
+        <thead><tr><th>Setting</th><th>P</th><th>Diag</th><th>KFAC</th><th class="ours">LCM</th></tr></thead>
+        <tbody>
+          <tr><td>reg / last-layer</td><td>33</td><td>51.3</td><td class="best">1.5</td><td class="ours">17.5</td></tr>
+          <tr><td>reg / all-weights</td><td>793</td><td>249.1</td><td class="best">28.1</td><td class="ours">95.2</td></tr>
+          <tr><td>cls / last-layer</td><td>99</td><td>73.0</td><td class="best">5.5</td><td class="ours">30.3</td></tr>
+          <tr><td>cls / all-weights</td><td>843</td><td>657.7</td><td class="best">104.2</td><td class="ours">406.2</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 2</span>
+      <h3>UCI regression — does fidelity buy better predictions?</h3>
+      <span class="chip c-warn">tie</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Fidelity is a means, not an end. The question that matters is predictive uncertainty on real tasks.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>Single-hidden-layer BNN on six UCI datasets, all-weights Laplace, prior and noise tuned per method by marginal likelihood, 8 random splits. Test log-likelihood (RMSE is identical across Laplace variants — they share the MAP mean — so all signal is in the LL).</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>Average rank: <strong>Full 1.79 &lt; KFAC 2.35 &lt; LCM 3.52 ≈ Diag 3.54 &lt; MAP 3.79</strong>. LCM and diagonal are statistically tied. LCM's one visible edge is robustness — on <code>yacht</code>, diagonal collapses to −2.91 (worse than MAP) while LCM recovers to −2.40.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>First surprise: a clearly better posterior approximation produced no better predictions. This is the finding that drove the rest of the project.</p></div></div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 3 / 3b</span>
+      <h3>Image classification — calibration and OOD detection</h3>
+      <span class="chip c-neg">negative</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Regression might be unrepresentative. Last-layer Laplace on image models is the standard “Laplace Redux” evaluation, where structured covariance is usually reported to help.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>Small CNNs on MNIST (OOD = FashionMNIST, 3 seeds) and CIFAR-10 (OOD = SVHN, 2 seeds). Accuracy, NLL, expected calibration error, and OOD-AUROC by predictive confidence.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>MNIST is saturated — the MAP is already calibrated (ECE 0.005), so every Laplace variant slightly <em>worsens</em> in-distribution metrics; LCM at least has the best OOD-AUROC among them (0.968). On CIFAR-10, KFAC/Full clearly help (NLL 0.576 → ≈0.50, ECE 0.068 → ≤0.025) but <strong>LCM is worse than diagonal</strong> (ECE 0.089 vs 0.054).</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>Not a fluke of regression. For neural-network weight posteriors, LCM's fidelity edge does not become calibration, and KFAC/Full are simply the better choice.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>CIFAR-10, last-layer · NLL/ECE lower better · AUROC higher better</caption>
+        <thead><tr><th>Method</th><th>Acc</th><th>NLL</th><th>ECE</th><th>OOD-AUROC</th></tr></thead>
+        <tbody>
+          <tr><td>MAP</td><td>.8309</td><td>.5760</td><td>.0678</td><td class="best">.8346</td></tr>
+          <tr><td>Diag</td><td>.8298</td><td>.5432</td><td>.0540</td><td>.8193</td></tr>
+          <tr><td>KFAC</td><td>.8309</td><td class="best">.5036</td><td class="best">.0180</td><td>.7949</td></tr>
+          <tr><td>Full</td><td>.8311</td><td>.5050</td><td>.0251</td><td>.7925</td></tr>
+          <tr class="ours"><td>LCM</td><td>.8307</td><td>.5503</td><td class="bad">.0893</td><td>.7992</td></tr>
+        </tbody>
+      </table>
+      <div class="tnote">Note that OOD-AUROC by max-confidence <em>favours MAP</em> — which is suspicious, since a point estimate has no epistemic uncertainty at all. That observation motivated Exp 5.</div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 4 / 4b</span>
+      <h3>Cost, scaling, and the mechanism behind the failure</h3>
+      <span class="chip c-pos">positive + explanatory</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Two questions: is the efficiency claim real, and <em>why</em> doesn't the structure help on neural networks?</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>(a) Storage and log-determinant cost vs <code>d</code>. (b) An ablation fitting LCM to a <em>real</em> last-layer GGN versus a <em>controlled</em> target that is a genuine chain in scrambled order — with the learned ordering and the diagonal “nugget” switched on and off.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p><strong>Cost:</strong> <code>3d</code> vs <code>d²</code> storage (60 000 floats vs 4·10<sup>8</sup> at d = 20 000); exact log-det where dense runs out of memory. <strong>Ablation:</strong> on the controlled chain LCM recovers the target to <strong>1.4e-4</strong> — but needs <em>both</em> the learned ordering (else 0.560) and the nugget (else 0.153). On a real GGN it plateaus at <strong>0.66</strong> regardless of settings (diagonal: 0.973).</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The mechanism, isolated: the model is sound — it recovers chain structure essentially perfectly when chain structure is there. Real neural-network curvature simply <em>is not</em> a 1-D chain (it is Kronecker-structured, which is KFAC's home). The plateau is the data, not the parameterisation.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>Ablation · relative Frobenius error to the target · lower is better</caption>
+        <thead><tr><th>Configuration</th><th>Real last-layer GGN</th><th>Controlled chain</th></tr></thead>
+        <tbody>
+          <tr><td>learned order + nugget</td><td>0.659</td><td class="best">0.00014</td></tr>
+          <tr><td>learned order, no nugget</td><td>0.662</td><td>0.153</td></tr>
+          <tr><td>fixed order + nugget</td><td>0.642</td><td>0.560</td></tr>
+          <tr><td>fixed order, no nugget</td><td>0.657</td><td>0.580</td></tr>
+          <tr><td>diagonal reference</td><td class="bad">0.973</td><td class="bad">0.955</td></tr>
+        </tbody>
+      </table>
+      <div class="tnote">Read the two columns against each other: the design choices matter enormously when the target is chain-like, and not at all when it isn't.</div>
+    </div>
+  </div>
+
+  <div class="phase">Phase 3 · Hunt for a regime where it wins</div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 5</span>
+      <h3>Epistemic OOD — was the metric unfair to Laplace?</h3>
+      <span class="chip c-neg">negative</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Max-confidence OOD rewards <em>aleatoric</em> uncertainty, which a MAP model already has. The uncertainty a posterior adds is <em>epistemic</em> — so the earlier comparison may have been measuring the wrong thing.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>Re-score CIFAR-10 vs SVHN using Monte-Carlo predictive <strong>mutual information</strong> (BALD) and predictive entropy instead of confidence.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>The metric works exactly as theory demands — MAP scores <strong>0.500</strong> (chance: no epistemic uncertainty), and KFAC/Full jump to <strong>0.72</strong>. But <strong>LCM (0.624) still trails diagonal (0.640)</strong>.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The metric <em>was</em> unfair — to Laplace in general, not to LCM specifically. Fixing it vindicates KFAC/Full and leaves LCM's ranking unchanged.</p></div></div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 6</span>
+      <h3>Per-layer (block-diagonal) LCM</h3>
+      <span class="chip c-warn">marginal</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>If a single global chain can't order unrelated parameters across layers, give it KFAC's block structure: one chain per layer.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>Fit a separate LCM to each parameter tensor's GGN block; compare KL-to-full against the global chain.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>Improves the global chain by 12–22% on all-weights (e.g. 95.2 → 73.9; 406.2 → 357.1) but stays far from KFAC (28.1; 104.2). Identical for last-layer, which is a single block anyway.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>Block structure helps a little; it does not close the gap. Blocking was never the binding constraint.</p></div></div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 7</span>
+      <h3>Change of habitat: 1-D-correlated GLMs</h3>
+      <span class="chip c-inf">reframing</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Exp 4b said the structure is only <em>correct</em> for genuinely 1-D-correlated, non-Kronecker curvature. Neural-network layers are the wrong habitat by construction. Where is the right one?</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>Bayesian linear models whose features have a natural 1-D order with decaying correlation — genomics (linkage disequilibrium), spectroscopy, time-series lags. Here KFAC does not apply at all (no layers) and dense Laplace is <code>O(d³)</code>, so LCM's only real competitor is diagonal.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>Also the scalability test: after the <code>kernel_matvec</code> fix, the matrix-free fit completes at every <code>d</code> up to 20 000 with no NaN (previously NaN for every <code>d ≥ 5000</code>). See the table below.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The right habitat identified — but on this <em>marginal</em> metric LCM still only ties diagonal. That set up the decisive question in Exp 8.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>Exp 7 · clean single-process run · n = 3000 · 800 Adam steps per fit</caption>
+        <thead><tr><th>d</th><th>Diag</th><th class="ours">LCM</th><th>Full</th><th>LCM fit time</th></tr></thead>
+        <tbody>
+          <tr><td>500</td><td>−0.814</td><td class="ours">−0.814</td><td>−0.814</td><td>4.3 s</td></tr>
+          <tr><td>1 000</td><td>−0.943</td><td class="ours">−0.944</td><td>−0.938</td><td>11.6 s</td></tr>
+          <tr><td>2 000</td><td>−1.335</td><td class="ours">−1.348</td><td>−1.250</td><td>27.6 s</td></tr>
+          <tr><td>5 000</td><td>−1.303</td><td class="ours">−1.308</td><td class="bad">−3.736</td><td>86.9 s</td></tr>
+          <tr><td>10 000</td><td>−1.227</td><td class="ours">−1.212</td><td class="bad">−4.592</td><td>244.4 s</td></tr>
+          <tr><td>20 000</td><td>−1.508</td><td class="ours">−1.491</td><td class="bad">−5.283</td><td>887.8 s</td></tr>
+        </tbody>
+      </table>
+      <div class="tnote"><strong>Read the bottom three rows carefully.</strong> With <code>n</code> fixed at 3000, every <code>d ≥ 5000</code> row is the rank-deficient <code>d &gt; n</code> regime, where the exact <code>Full</code> posterior <em>itself</em> collapses below diagonal. LCM nominally edging diagonal there is not a win — it is noise in a regime where the reference has broken down. The meaningful rows are <code>d ≤ 2000</code>. These rows demonstrate <em>computational feasibility</em>, not statistical benefit.</div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 8 / 8c</span>
+      <h3>The reframing that found the real effect: joint vs marginal</h3>
+      <span class="chip c-pos">the one positive</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Every negative so far used a <strong>marginal</strong> metric — per-point NLL, ECE, single-point OOD. But marginal predictive uncertainty is almost <em>insensitive</em> to off-diagonal covariance, which is precisely what a structured model adds. The metric may have been blind to the effect all along.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>On the 1-D-correlated GLM, compare marginal predictive log-likelihood against <strong>joint</strong> predictive log-likelihood over a batch of test points (which uses the off-diagonal predictive covariance). 10 seeds with 95% confidence intervals.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>Exactly the predicted dissociation: LCM ties (slightly trails) diagonal on marginal LL, but closes a real share of the diagonal→full gap on <em>joint</em> LL — <strong>62% ± 49%</strong> (d=500), <strong>52% ± 16%</strong> (d=1000), <strong>23% ± 12%</strong> (d=1500).</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The effect is real but <strong>modest and shrinking with d</strong>, and not significant at d = 500. An earlier 3-seed run suggested 70–81%; the 10-seed numbers are the trustworthy ones. This is the project's central positive finding — and it is smaller than first thought.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>Exp 8c · 10 seeds · mean ± 95% CI</caption>
+        <thead><tr><th>d</th><th>Marginal (diag / LCM / full)</th><th>Joint (diag / LCM / full)</th><th class="ours">Joint gap closed</th></tr></thead>
+        <tbody>
+          <tr><td>500</td><td>−0.823 / −0.826 / −0.823</td><td>−0.830 / −0.823 / −0.820</td><td class="ours">62% ± 49%</td></tr>
+          <tr><td>1 000</td><td>−0.922 / −0.933 / −0.919</td><td>−0.946 / −0.927 / −0.907</td><td class="ours">52% ± 16%</td></tr>
+          <tr><td>1 500</td><td>−1.076 / −1.110 / −1.057</td><td>−1.116 / −1.097 / −1.033</td><td class="ours">23% ± 12%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 9</span>
+      <h3>Batch active learning — cashing in the joint advantage</h3>
+      <span class="chip c-neg">negative, with mechanism</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Joint uncertainty has an obvious application: choosing a batch of jointly-informative points requires modelling <em>redundancy</em> between candidates, which a diagonal cannot do. If the Exp 8 effect is real, this should be where it pays.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>Greedy batch selection maximising the joint information gain under each posterior, then scoring the chosen batch by its <em>true</em> information gain under the exact posterior. Random and top-k selection as references.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p><strong>LCM fails.</strong> As a fraction of the oracle's gain above random: greedy-LCM <strong>43–55%</strong> versus greedy-diagonal <strong>83–90%</strong> — worse even than naive top-k. Root cause isolated: active learning is inherently low-data (n ≪ d), where the curvature is low-rank; LCM's fit residual degrades from 0.13 (n=3000) to <strong>0.74</strong> (n=40).</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The joint advantage requires <code>n ≳ d</code> — exactly the regime active learning is <em>not</em> in. The most natural application of the one positive finding is unavailable.</p></div></div>
+    </div>
+  </div>
+
+  <div class="phase">Phase 4 · Stress-test the claim before believing it</div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 10 / 10b</span>
+      <h3>The decisive test: does the <em>learned</em> ordering matter?</h3>
+      <span class="chip c-neg">kills the novelty</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>The sharpest reviewer objection: on data that is already ordered, a plain banded model in the given order would match LCM, so the “learned coordinate” — its novelty over classical banded-GMRF and state-space-GP models — would be doing nothing. Note LCM takes no order as input; the ordering <em>is</em> the fitted coordinate, sorted internally. So the real question is whether fitting <code>a</code> can <strong>discover</strong> an order or only <strong>refine</strong> a good initialisation.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>Same data in two conditions — features in natural order, and randomly permuted (order latent). Four variants: fixed natural order, fixed spectral-seriation order, learned coordinate, plus a fragility sweep that corrupts the true order by known amounts.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>Given the correct order LCM works (+58%, learned +59%). With a latent order, learned recovery is <strong>0.028</strong> (≈ random) and joint-LL is <strong>−84%</strong>, i.e. <em>worse than diagonal</em>. The fragility sweep locates a brutally sharp threshold: the chain beats diagonal at |Spearman| ≥ <strong>0.999</strong> and <strong>fails at 0.998</strong>. Seriation recovery is 0.31 / 0.70 / 0.99 across seeds — sometimes excellent, never reliably enough.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The model is permutation-<em>equivariant</em> — given correct coordinates it works fine — so the failure is purely that fitting <code>a</code> is a continuous relaxation of a discrete permutation search, and gradient descent cannot cross permutation basins. The learned ordering only works when initialised at ≈ the true order: i.e. when the order is already known, where it is <strong>unnecessary</strong>.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>Exp 10b · ordering fragility · joint-LL vs order accuracy · diagonal = −0.865</caption>
+        <thead><tr><th>Order accuracy (|Spearman|)</th><th>1.000</th><th>0.9997</th><th>0.9994</th><th>0.998</th><th>0.991</th><th>0.967</th></tr></thead>
+        <tbody>
+          <tr><td>Joint-LL</td><td>−0.853</td><td>−0.852</td><td>−0.858</td><td>−0.870</td><td>−0.885</td><td>−0.892</td></tr>
+          <tr><td>Beats diagonal?</td><td class="best">yes</td><td class="best">yes</td><td class="best">yes</td><td class="bad">no</td><td class="bad">no</td><td class="bad">no</td></tr>
+        </tbody>
+      </table>
+      <div class="tnote">A mis-ordered chain is a <em>confidently wrong</em> model — it asserts strong correlation between variables that are actually distant — whereas a diagonal is a safe under-model. Telling detail: with a wrong order the <em>fixed</em>-order variant degrades gracefully to diagonal (0%), while the <em>learned</em> variant actively overfits into the wrong structure (−84%).</div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">EXP 11</span>
+      <h3>Real data — does any of this survive outside simulation?</h3>
+      <span class="chip c-pos">real-data positive</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>Every joint-UQ result so far was on synthetic AR(1) features whose curvature is chain-structured <em>by construction</em>. No reviewer would accept that alone.</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>Two real datasets with a genuine, known 1-D order: <strong>Tecator NIR spectroscopy</strong> (100 wavelength-ordered channels, predicting fat content) and <strong>Mauna Loa CO₂</strong> autoregression on 64 lags. 5 splits each.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>On Tecator (n ≈ d, order known), LCM closes <strong>~100%</strong> of the diagonal→full joint-LL gap and also beats diagonal on marginal LL. On CO₂ (n ≫ d) the full-vs-diagonal gap is negligible to begin with, so there is nothing to win. In both, <code>LCM-learned ≈ LCM-fixed</code>.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>A genuine real-data confirmation of the niche — and simultaneously the clearest evidence that the learned coordinate is inert, since it exactly matches simply using the known order.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>Exp 11 · Tecator NIR (n = 144, d = 100) · higher is better</caption>
+        <thead><tr><th>Method</th><th>Marginal LL</th><th>Joint LL</th></tr></thead>
+        <tbody>
+          <tr><td>Diag</td><td>−3.616</td><td>−3.540</td></tr>
+          <tr class="ours"><td>LCM (fixed order)</td><td>−3.578</td><td>−3.471</td></tr>
+          <tr class="ours"><td>LCM (learned)</td><td>−3.578</td><td class="best">−3.468</td></tr>
+          <tr><td>Full</td><td>−3.579</td><td>−3.472</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============================= DESIGN DECISIONS ============================= -->
+<section id="decisions">
+  <div class="eyebrow">Method choices</div>
+  <h2>Key decisions — and what they cost</h2>
+  <p class="col muted small">Choices that shaped what the results can and cannot say.</p>
+
+  <h3>Why the GGN / Fisher instead of the exact Hessian</h3>
+  <div class="col">
+  <p><strong>Why.</strong> Three reasons. (1) The exact Hessian of a neural loss is generally
+  <em>indefinite</em>, so <code>H⁻¹</code> is not a valid covariance at all; the Generalized
+  Gauss–Newton is positive semi-definite by construction. (2) It is the standard curvature in
+  Laplace-for-deep-learning and the library default, so comparisons to diag/KFAC/full are
+  apples-to-apples. (3) Decisively for this project, the GGN is a <strong>sum of rank-1 outer
+  products</strong> of per-example gradients — exactly the form LCM's Frobenius objective consumes,
+  which is what makes a matrix-free fit possible at all.</p>
+  <p><strong>Impact.</strong> Near a well-fit optimum the GGN ≈ Hessian, so this is mild. But it
+  discards the loss-curvature residual term, and the <em>empirical</em> Fisher (using observed
+  labels) differs from the <em>true</em> Fisher (expectation over model labels). Importantly, for
+  the GLM experiments (7–11) this is not an approximation at all — the GGN is exactly
+  <code>XᵀΛX</code> — so the central positive finding rests on exact curvature.</p>
+  <p><strong>What could be done differently.</strong> Use the exact Hessian where it is PSD (convex
+  last layers), MC-sample labels for the true Fisher, or apply a positive-curvature correction.
+  None would likely change conclusions that are about covariance <em>structure</em> rather than
+  curvature magnitude — but it is worth a robustness check before publication.</p>
+  </div>
+
+  <h3>Other choices, briefly</h3>
+  <ul class="col">
+    <li><strong>Laplace rather than variational inference.</strong> Cheapest direct route from a
+    trained network to a swappable Gaussian covariance, and Appendix A's objective maps onto fitting
+    the Fisher. Cost: conclusions are conditional on the Laplace frame. Fitting LCM as a
+    <em>variational</em> family would test the same structure independently of the GGN.</li>
+    <li><strong>Materialising the dense GGN in <code>LCMLaplace</code>.</strong> Deliberate
+    correctness-first choice: subclassing <code>FullLaplace</code> reuses its tested sampling and
+    predictive code and allows validation against the exact posterior. Cost: the <em>class</em> is
+    capped at moderate <code>P</code> even though the <em>representation</em> is <code>O(P)</code>.
+    The matrix-free path exists and works; wiring it end-to-end is the clean next step.</li>
+    <li><strong>Synthetic AR(1) first, real data second.</strong> The synthetic target is chain-structured
+    by construction — the ideal case, answering “does this help <em>at all</em>?” before “does it
+    help in practice?”. Reporting only the synthetic result would have been misleading, which is why
+    Exp 11 was treated as blocking.</li>
+  </ul>
+</section>
+
+<hr class="rule">
+
+<!-- ============================= BUGS ============================= -->
+<section id="bugs">
+  <div class="eyebrow">Engineering</div>
+  <h2>Four bugs — three of which failed silently</h2>
+  <div class="col">
+  <p>Worth reading even if you skip everything else: the recurring failure mode in this method family
+  is <strong>silent numerical failure in exponential primitives</strong>. Nothing raised an
+  exception; results were simply wrong or <code>NaN</code>.</p>
+  </div>
+
+  <div class="exp">
+    <div class="anat">
+      <div><span class="k">Bug 1</span><div class="v"><p><strong>Fit initialisation scale</strong> (experiment scripts). Init was scaled for the unnormalised GGN while the matrix-free fitter targets <code>GGN/N</code>. This produced a <em>false conclusion</em> — “the matrix-free fit is weak” (0.53 vs 0.22) — that sat in the project's own write-up until it was re-examined. Correctly scaled, the two match: 0.2197 vs 0.2198.</p></div></div>
+      <div><span class="k">Bug 2</span><div class="v"><p><strong>Inverse-softplus overflow</strong> (library). <code>log(expm1(x))</code> overflows to inf/NaN for any moderately large diagonal scale, making Adam diverge silently. Fixed with a stable threshold-based helper plus data-driven auto-initialisation on both fitters.</p></div></div>
+      <div><span class="k">Bug 3</span><div class="v"><p><strong><code>kernel_matvec</code> overflow</strong> (library) — the worst. The O(d) prefix-sum factored <code>exp(a_j − a_i)</code> through a single global offset, so the growing factor overflows once the <em>coordinate range</em> exceeds ~709 in float64 — even though every kernel entry is ≤ 1. This depends on the <em>range</em>, not <code>d</code>. It broke <em>precisely the scalable path</em>, returning NaN for every <code>d ≥ 5000</code>. First fix (<code>logcumsumexp</code>) was exact but <strong>13–20× slower</strong> when benchmarked; replaced with blocked rescaling — exact to ~1e-15, finite to range 10<sup>4</sup>, ~2× cost.</p></div></div>
+      <div><span class="k">Bug 4</span><div class="v"><p><strong>Wrong reference in the ordering diagnostic.</strong> Recovery was measured against the <em>inverse</em> permutation. Verified empirically rather than by argument: freezing <code>a = perm</code> fits the GGN to 0.14, while <code>argsort(perm)</code> gives 0.98. Substantive conclusions were unaffected, but it badly mis-stated seriation's recovery — and the corrected numbers make the finding <em>sharper</em>, since seriation can reach 0.99 and still fall short of the 0.999 threshold.</p></div></div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="lb">Lesson for anyone building on this</span>
+    <p>Every one of these passed small-scale correctness tests. Scalability and numerical claims must
+    be <em>demonstrated at the target scale</em>, never extrapolated — and fit loops over
+    exponential-family primitives deserve explicit finite-value assertions.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============================= AUDIT ============================= -->
+<section id="audit">
+  <div class="eyebrow">Validation</div>
+  <h2>Adversarial audit — are these results real?</h2>
+  <div class="col">
+  <p>A negative result is only worth reporting if it is a property of the method rather than of the
+  person testing it. So the conclusions above were then attacked directly: was the paper's code
+  incorporated correctly, and could a choice of formulation, architecture, data or settings have
+  <em>manufactured</em> the negatives? Five independent checks. <strong>All five failed to overturn
+  the conclusions</strong>, and two of them strengthen the central claim.</p>
+  </div>
+
+  <div class="tw">
+    <table>
+      <caption>Audit summary</caption>
+      <thead><tr><th>Check</th><th>Question</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Port fidelity</td><td style="text-align:left;font-family:var(--serif)">Does my code match the paper's?</td><td class="best">exact (0.00e+00)</td></tr>
+        <tr><td>Integration</td><td style="text-align:left;font-family:var(--serif)">Does LCM reduce to diagonal at <code>w=0</code>?</td><td class="best">exact</td></tr>
+        <tr><td>Formulation</td><td style="text-align:left;font-family:var(--serif)">Was fitting the precision the wrong call?</td><td class="best">no — it was the better call</td></tr>
+        <tr><td>Scale</td><td style="text-align:left;font-family:var(--serif)">Would a bigger model / cluster help?</td><td class="bad">no — gap widens</td></tr>
+        <tr><td>Habitat</td><td style="text-align:left;font-family:var(--serif)">Was the wrong target used (weights vs features)?</td><td>no evidence</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">AUDIT 1–2</span>
+      <h3>Was the paper's code incorporated correctly?</h3>
+      <span class="chip c-pos">verified exact</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Port</span><div class="v"><p>Ran the authors' original <code>lcm.py</code> and mine on <em>identical</em> parameters against a dense <code>MultivariateNormal</code> ground truth. Agreement is <strong>0.00e+00</strong> once one detail is matched: the paper hardcodes the nugget ε at <code>1e-5</code>, my default is <code>1e-6</code>. That was the entire discrepancy — the associative scan, kernel and state-space formulation all match.</p></div></div>
+      <div><span class="k">Integration</span><div class="v"><p>LCM strictly generalises a diagonal (<code>w = 0</code>), so an LCM posterior with <code>w</code> zeroed <em>must</em> reproduce <code>DiagLaplace</code>. It does: identical log-determinant (100.048805) and marginal likelihood (−128.898438), off-diagonal exactly <code>0.00e+00</code>, predictions agreeing to <strong>8.9e-08</strong>.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>Together with the 15 tests checking every primitive against dense references, the negatives are not an implementation artifact.</p></div></div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">AUDIT 3</span>
+      <h3>Did the formulation choice manufacture the negatives?</h3>
+      <span class="chip c-pos">choice was correct</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>The one substantive decision never tested during the project: LCM was fit to the <strong>precision</strong> (the GGN) throughout, whereas the paper fits it to a <strong>covariance</strong>. If that were backwards, every negative above would be suspect.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>Fitting the precision wins on <em>every</em> metric, and the alternative is <em>worse than diagonal</em> on both predictive measures. (Fitting the covariance does win on raw covariance Frobenius error — 0.595 vs 0.785, it captures the large-variance directions better — but that does not become posterior or predictive quality.)</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>The choice made was the right one. Had the alternative been chosen, the results would have been <strong>more</strong> negative, not less.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>Formulation A (used) vs B (alternative) · 1-D-correlated GLM</caption>
+        <thead><tr><th>Posterior</th><th>KL to exact</th><th>Marginal LL</th><th>Joint LL</th></tr></thead>
+        <tbody>
+          <tr><td>diagonal</td><td>352.6</td><td>−0.8144</td><td>−0.8213</td></tr>
+          <tr class="ours"><td>A: fit precision (used)</td><td class="best">75.3</td><td class="best">−0.8135</td><td class="best">−0.8090</td></tr>
+          <tr><td>B: fit covariance</td><td class="bad">1752.8</td><td class="bad">−0.9423</td><td class="bad">−0.8770</td></tr>
+          <tr><td>full (exact)</td><td>0</td><td>−0.8114</td><td>−0.8001</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">AUDIT 4</span>
+      <h3>Would a larger model or a compute cluster help?</h3>
+      <span class="chip c-neg">no — structural</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>The practical question behind any negative result: is this a resource limit that scale would fix?</p></div></div>
+      <div><span class="k">What</span><div class="v"><p>A linear layer's GGN is <em>exactly</em> Kronecker (<code>Λ ⊗ ΦΦᵀ</code>) — KFAC's home, and something a bandwidth-1 chain cannot represent except degenerately. Measured the nearest Kronecker product against the best chain on real trained last-layer curvature, at two widths.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p><strong>The gap widens with scale.</strong> Growing the layer improved the Kronecker fit (0.530 → 0.451) while the chain stayed flat (0.733 → 0.709). Corroborating: the chain fit to a real GGN plateaus at ~0.66 regardless of ordering, nugget, or optimisation budget (0.6585 at 800 steps → 0.6582 at 1600), while the <em>same fitter</em> recovers a genuine chain to 1.4e-4.</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>Scaling up makes KFAC <em>relatively better</em>, not LCM. This is a representational mismatch, not a resource limit — <strong>compute is the one intervention that provably cannot work here</strong>.</p></div></div>
+    </div>
+    <div class="tw">
+      <table>
+        <caption>Structure of real last-layer curvature · relative Frobenius error · lower is better</caption>
+        <thead><tr><th>Approximation</th><th>Linear(8→3), P=24</th><th>Linear(12→4), P=48</th></tr></thead>
+        <tbody>
+          <tr><td>nearest Kronecker product</td><td class="best">0.530</td><td class="best">0.451</td></tr>
+          <tr class="ours"><td>best LCM chain</td><td>0.733</td><td>0.709</td></tr>
+          <tr><td>diagonal</td><td class="bad">0.906</td><td class="bad">0.931</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">AUDIT 5</span>
+      <h3>Was LCM applied to the wrong target — weights instead of features?</h3>
+      <span class="chip c-warn">no evidence, with a caveat</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Why</span><div class="v"><p>The paper applies LCM to conv <em>feature maps</em> (spatially correlated, naturally raster-orderable); this project applied it to <em>weight curvature</em>. A plausible explanation for the whole negative arc.</p></div></div>
+      <div><span class="k">Outcome</span><div class="v"><p>Fitting an actual conv feature-map covariance (8×14×14, D=1568): LCM <strong>0.924</strong> vs diagonal 0.967 — barely better, and <em>relatively worse</em> than on weight curvature (0.66 vs 0.97).</p></div></div>
+      <div><span class="k">Conclusion</span><div class="v"><p>“Wrong target” does not explain the negatives. <strong>Caveat, stated plainly:</strong> this test used an untrained network with <code>n = 512 &lt; D = 1568</code>, so the empirical covariance is rank-deficient — a regime Exp 9 showed LCM fits poorly. The same caveat applies to the paper, whose feature dimension reaches ~2·10⁵ with far smaller batches; it too operates where absolute fit quality is poor and only the comparison against diagonal is meaningful. Consistent with, not contradictory to, the findings here.</p></div></div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="lb">What the audit did not rule out</span>
+    <p>Formulation B was tested at one setting, not across the campaign. The habitat test is
+    confounded by rank deficiency and an untrained network. Some early experiments used 2–3 seeds
+    (the headline joint-UQ result was re-run at 10), and only two real datasets were used. None of
+    these affect the two structural findings — the formulation comparison and the Kronecker
+    argument — which are the load-bearing ones.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============================= LIMITATIONS ============================= -->
+<section id="limits">
+  <div class="eyebrow">Honest accounting</div>
+  <h2>Limitations</h2>
+  <ol class="col">
+    <li><strong>Narrow niche.</strong> The only demonstrated advantage is joint predictive UQ for
+    variables with a <em>known</em> 1-D order and decaying correlation, at <code>n ≳ d</code>. Not
+    neural-network weights (KFAC dominates), not marginal calibration or OOD, not low-data tasks.</li>
+    <li><strong>The learned coordinate is inert.</strong> It cannot recover unknown orders and is
+    unnecessary when the order is known — undercutting the novelty over classical banded-GMRF and
+    state-space-GP models.</li>
+    <li><strong>Extreme ordering fragility.</strong> Needs ≳0.999 accuracy; a mis-ordered chain is
+    worse than a diagonal.</li>
+    <li><strong>Effect size is modest.</strong> The 10-seed joint-UQ gap is 62%/52%/23% with wide
+    intervals, shrinking as <code>d</code> grows, and not significant at d = 500.</li>
+    <li><strong>Implementation scaling.</strong> Wall-clock grows ~<code>O(d^1.44)</code>, not
+    <code>O(d log d)</code>: the blocked kernel's sequential block count grows with the coordinate
+    range. The asymptotic <em>work</em> is O(d); the implementation is not.</li>
+    <li><strong>Statistical scope.</strong> Two real datasets × 5 splits; heuristic noise in the
+    real-data pass; 2–3 seeds for some early experiments (headline result re-run at 10).</li>
+    <li><strong>Seed variance.</strong> In one of three fragility seeds, diagonal actually beat the
+    exact full posterior — the premise itself is noisy at these sizes.</li>
+  </ol>
+</section>
+
+<hr class="rule">
+
+<!-- ============================= VERDICT ============================= -->
+<section id="verdict">
+  <div class="eyebrow">Where this leaves the work</div>
+  <h2>Publication assessment</h2>
+  <div class="col">
+  <p><strong>Publishable — as an honest characterisation plus a systems contribution, not as a new
+  state-of-the-art method.</strong> Recommended path: an approximate-inference <strong>workshop</strong>
+  (AABI / NeurIPS-BDL) first, then <strong>TMLR</strong>, whose bar is supported claims rather than
+  impact. A main-conference submission is out of reach without new methodology.</p>
+  </div>
+
+  <h3>What can be claimed</h3>
+  <ul class="col">
+    <li>A near-linear structured covariance for Laplace approximations (<code>3d</code> parameters,
+    <code>O(d)</code>–<code>O(d log d)</code> primitives, an associative-scan log-determinant
+    <strong>15–64× faster</strong> than the sequential version) shipped in a maintained library
+    with tests.</li>
+    <li>A careful characterisation of <em>when structured covariance helps</em>: joint not marginal;
+    chain not Kronecker; needs <code>n ≳ d</code> and a near-exact ordering.</li>
+    <li>A real-data demonstration that it recovers full-Laplace joint uncertainty for
+    known-1-D-ordered features.</li>
+  </ul>
+
+  <h3>What must not be claimed</h3>
+  <ul class="col">
+    <li>State-of-the-art Bayesian deep-learning uncertainty.</li>
+    <li>Any active-learning or Bayesian-optimisation gain — demonstrated failure.</li>
+    <li>A working <em>learned</em> ordering.</li>
+    <li>Novelty of the joint-vs-marginal insight — that is Osband et al.'s established thesis
+    (Epistemic Neural Networks, The Neural Testbed), which this work uses as motivation and
+    evaluation framework, not as a contribution.</li>
+  </ul>
+
+  <div class="callout neg">
+    <span class="lb">The objection that is now conceded</span>
+    <p>“If the order is known, just band it.” That is essentially correct: in its working regime LCM
+    <em>is</em> a banded / state-space-GP precision with a faster log-determinant. The paper must
+    concede this and differentiate on the systems contribution, not on the covariance family.</p>
+  </div>
+
+  <h3>Highest-value next steps</h3>
+  <ol class="col">
+    <li><strong>Do not buy compute.</strong> A larger model or a cluster is the one intervention the
+    audit shows provably cannot help weight-space Laplace — the Kronecker-vs-chain mismatch is
+    representational and <em>widens</em> with scale. Redirect any budget to breadth instead.</li>
+    <li><strong>Add datasets, not size.</strong> More real known-order data — spectroscopy beyond
+    Tecator, genomics with linkage disequilibrium, climate/spatial transects — at <code>n ≳ d</code>,
+    with marginal-likelihood-tuned noise and ≥10 seeds. This is what moves the joint-UQ claim from
+    one dataset to a regime.</li>
+    <li>Wire the matrix-free fit through <code>LCMLaplace</code> end-to-end so the scalability claim
+    holds for the class, not just the primitives.</li>
+    <li>Fix the <code>O(d^1.44)</code> implementation scaling with an associative-scan block carry —
+    the same trick already used for the log-determinant. This is the weakest part of the systems
+    story and it is fixable.</li>
+    <li>Scope one genuinely untested Bayesian setting: <strong>functional / GP-space Laplace</strong>,
+    where the correlated variables are <em>data points</em> rather than weights and the covariance
+    over points is genuinely Matérn-like. Be aware this is classical state-space-GP territory — a
+    systems contribution, not novelty.</li>
+    <li><strong>Do not pursue ordering recovery</strong> expecting a win. The ≥0.999 fragility
+    threshold means even an excellent seriation is insufficient; expected value is poor.</li>
+  </ol>
+</section>
+
+<hr class="rule">
+
+<section id="repro">
+  <div class="eyebrow">Reproduction</div>
+  <h2>Where everything lives</h2>
+  <div class="col">
+  <p>Fork of <code>aleximmer/Laplace</code> on branch <code>lcm-covariance</code>: the module
+  <code>laplace/lcm.py</code>, the <code>LCMLaplace</code> / <code>LCMLLLaplace</code> classes, and
+  <code>tests/test_lcm.py</code> (15 tests, <code>pytest tests/test_lcm.py</code>).</p>
+  <p>Experiments in <code>experiments/</code> with a shared harness (<code>common.py</code>) and all
+  result CSVs and figures in <code>experiments/results/</code>. Run the campaign with
+  <code>python experiments/run_all.py</code> — which now enumerates all 15 experiments; it previously
+  listed only the first four and silently skipped the rest.</p>
+  <p>Datasets: six UCI regression sets, MNIST / FashionMNIST, CIFAR-10 / SVHN, Tecator NIR (OpenML),
+  and Mauna Loa CO₂ (statsmodels).</p>
+  </div>
+</section>
+
+<footer>
+  <p>Companion documents: <code>PROJECT_REPORT.md</code> (the source technical record),
+  <code>PUBLICATION_ASSESSMENT.md</code> (venue analysis, novelty check, reviewer rebuttals),
+  <code>AUDIT.md</code> (the adversarial audit and its scripts), <code>COMPELLING_USE.md</code> (the niche search), and the derivations in
+  <code>LCM_laplace_math_stepbystep.md</code>.</p>
+  <p class="small">All figures in this report are measured values from the committed result CSVs;
+  where an earlier number was superseded by a longer run or a bug fix, the corrected value is used
+  and the supersession noted.</p>
+</footer>
+
+</div>
