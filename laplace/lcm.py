@@ -175,6 +175,34 @@ def logdet_parallel(a: torch.Tensor, w: torch.Tensor, d: torch.Tensor) -> torch.
     return torch.log(S).sum()
 
 
+def _decaying_prefix(a_sorted: torch.Tensor, x_sorted: torch.Tensor) -> torch.Tensor:
+    """Exclusive decaying prefix ``L_i = sum_{j<i} exp(a_j - a_i) x_j`` for
+    ascending ``a_sorted``, computed in log-space so it is exact for **any**
+    coordinate range.
+
+    Every individual term has a non-positive exponent (``a_j <= a_i``), so the
+    result is well-scaled -- but the obvious factorisation through a common
+    offset, ``exp(-(a_i - a_0)) * sum_j exp(a_j - a_0) x_j``, evaluates each
+    factor separately and **overflows to inf/NaN once the coordinate range
+    exceeds ~709 in float64** (~88 in float32), even though their product is
+    bounded by 1. Working in log-space with ``logcumsumexp`` keeps the running
+    accumulator on the ``a_i`` scale and avoids that entirely. Signed ``x`` is
+    handled by accumulating the positive and negative parts separately.
+    """
+    neg_inf = torch.tensor(float("-inf"), dtype=x_sorted.dtype, device=x_sorted.device)
+    out = torch.zeros_like(x_sorted)
+    for sign in (1.0, -1.0):
+        xp = (sign * x_sorted).clamp(min=0.0)
+        log_terms = torch.where(xp > 0, torch.log(xp) + a_sorted, neg_inf)
+        lcs = torch.logcumsumexp(log_terms, dim=-1)
+        # make the scan exclusive (shift right by one, seeded with -inf == 0)
+        lcs_excl = torch.cat(
+            [neg_inf.expand(*lcs.shape[:-1], 1), lcs[..., :-1]], dim=-1
+        )
+        out = out + sign * torch.exp(lcs_excl - a_sorted)
+    return out
+
+
 def kernel_matvec(a: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     """Compute ``y = K(a) x`` with ``K(a)_ij = exp(-|a_i - a_j|)`` in ``O(dim)``.
 
@@ -200,25 +228,14 @@ def kernel_matvec(a: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     inv_idx = torch.argsort(idx)
     x_sorted = x.index_select(-1, idx)
 
-    # Stable exclusive prefix: L_i = exp(-(a_i - a_0)) * sum_{j<i} exp(a_j - a_0) x_j.
-    # Offsetting by the boundary coordinate keeps every exponent <= 0 for the
-    # decaying factor; the growing factor is bounded by exp(coordinate range).
-    a0 = a_sorted[..., :1]
-    aL = a_sorted[..., -1:]
-    ex_lo = torch.exp(a_sorted - a0)  # >= 1 but <= exp(range)
-    em_lo = torch.exp(-(a_sorted - a0))  # <= 1
-    prefix_incl = torch.cumsum(ex_lo * x_sorted, dim=-1)
-    prefix_excl = prefix_incl - ex_lo * x_sorted
-    left = em_lo * prefix_excl
-
-    # Stable suffix: R_i = exp(a_i - aL) * sum_{j>i} exp(aL - a_j) x_j.
-    ex_hi = torch.exp(a_sorted - aL)  # <= 1
-    em_hi = torch.exp(aL - a_sorted)  # >= 1 but <= exp(range)
-    # Exclusive suffix sum via reversed cumsum.
-    rev = torch.flip(em_hi * x_sorted, dims=(-1,))
-    suffix_incl = torch.flip(torch.cumsum(rev, dim=-1), dims=(-1,))
-    suffix_excl = suffix_incl - em_hi * x_sorted
-    right = ex_hi * suffix_excl
+    left = _decaying_prefix(a_sorted, x_sorted)
+    # R_i = sum_{j>i} exp(a_i - a_j) x_j is the same prefix problem on the
+    # reversed, negated coordinates (which are again increasing).
+    right = torch.flip(
+        _decaying_prefix(torch.flip(-a_sorted, dims=(-1,)),
+                         torch.flip(x_sorted, dims=(-1,))),
+        dims=(-1,),
+    )
 
     y_sorted = left + x_sorted + right
     return y_sorted.index_select(-1, inv_idx)

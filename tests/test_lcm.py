@@ -57,6 +57,27 @@ def test_kernel_matvec_matches_dense():
     assert torch.allclose(lcm.matvec(x), x @ lcm.dense().T, atol=1e-9)
 
 
+def test_kernel_matvec_stable_for_long_chains():
+    """Regression: the prefix-sum kernel matvec must not overflow for large
+    coordinate ranges. The previous offset-based factorisation produced inf/NaN
+    once the range exceeded ~709 (float64) even though every kernel entry is <=1."""
+    # exact vs dense at a range that would overflow the naive factorisation
+    d = 400
+    a = torch.arange(d, dtype=DT) * 3.0  # range 1197 >> 709
+    x = torch.randn(2, d, dtype=DT)
+    K = torch.exp(-torch.abs(a[:, None] - a[None, :]))
+    assert torch.allclose(kernel_matvec(a, x), x @ K.T, atol=1e-9)
+    # stays finite for long chains
+    for dim, spacing in [(5000, 0.105), (20000, 0.105)]:
+        a_big = torch.arange(dim, dtype=DT) * spacing
+        y = kernel_matvec(a_big, torch.randn(dim, dtype=DT))
+        assert torch.isfinite(y).all()
+    # and remains differentiable
+    a_g = (torch.arange(500, dtype=DT) * 2.0).requires_grad_(True)
+    kernel_matvec(a_g, torch.randn(500, dtype=DT)).sum().backward()
+    assert torch.isfinite(a_g.grad).all()
+
+
 def test_kalman_logdet_and_quad_match_dense():
     lcm = _random_lcm()
     A = lcm.dense()
