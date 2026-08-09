@@ -78,20 +78,23 @@ def gaussian_ll(mu, var, y):
     return float((-0.5 * (torch.log(2 * np.pi * var) + (y - mu) ** 2 / var)).mean())
 
 
-def fit_lcm_to_ggn(V, ggn_diag, rho_guess, steps=800, lr=5e-2):
+def fit_lcm_to_ggn(V, ggn_diag, rho_guess, steps=800, lr=5e-2, batch_size=None):
     """Fit LCM to the GGN whose empirical form is sum_n v_n v_n^T (V = curvature-
     weighted features, one row per sample). fit_frobenius targets (1/N) sum v v^T,
-    so the fitted A approximates GGN / N. Good init: natural index ordering with
-    spacing -log(rho), and w near sqrt(diag)."""
+    so the fitted A approximates GGN / N.
+
+    We only seed the *ordering* prior: the natural index order with spacing
+    -log(rho_guess) (domain knowledge fit_frobenius's auto_init does not have
+    access to). The w/d *scale* is left to the library's default `auto_init=True`,
+    which derives it from the empirical diagonal of the vectors -- doing this by
+    hand here previously used a stale, badly-scaled nugget init and was the root
+    cause of a large matrix-free-vs-dense fit gap (see PUBLICATION_ASSESSMENT.md)."""
     N, d = V.shape
     lcm = LCMCovariance(d, dtype=torch.float64).to(V.device)
     with torch.no_grad():
         spacing = max(-np.log(max(rho_guess, 1e-3)), 1e-3)
         lcm.a.copy_(torch.arange(d, device=V.device) * spacing)
-        lcm.w.copy_(torch.full((d,), float((ggn_diag.mean() / N).clamp(min=1e-6) ** 0.5),
-                               device=V.device))
-        lcm.u_raw.copy_(torch.full((d,), -4.0, device=V.device))  # small nugget
-    lcm.fit_frobenius(V, n_steps=steps, lr=lr)
+    lcm.fit_frobenius(V, n_steps=steps, lr=lr, batch_size=batch_size)
     return lcm
 
 

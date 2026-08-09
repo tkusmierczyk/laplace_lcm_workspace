@@ -324,17 +324,43 @@ size; the threshold conclusion holds on the mean but individual seeds vary.
 **Cost:** `3d` covariance storage vs `d²` (full); exact `O(d log d)` log-det, 15–64×
 faster than the sequential version and feasible where dense OOMs.
 
-**Scaling of the matrix-free fit (Exp 7).** After the `kernel_matvec` fix, the
-matrix-free `fit_frobenius` runs to large `d` without NaN (it previously returned
-NaN for every `d ≥ 5000`). Two caveats on how to read those rows:
+**Scaling of the matrix-free fit (Exp 7, clean single-process run, n=3000, 800
+Adam steps/fit).** After the `kernel_matvec` fix, `fit_frobenius` runs to large `d`
+with **no NaN anywhere** (previously NaN for every `d ≥ 5000`):
+
+| d | test-LL diag / **LCM** / full | pred-var rel-err diag / LCM | LCM fit |
+|---|---|---|---|
+| 500 | −0.814 / **−0.814** / −0.814 | 0.033 / 0.039 | 4.3 s |
+| 1 000 | −0.943 / **−0.944** / −0.938 | 0.111 / 0.128 | 11.6 s |
+| 2 000 | −1.335 / **−1.348** / −1.250 | 0.441 / 0.460 | 27.6 s |
+| 5 000 | −1.303 / **−1.308** / −3.736 | 0.998 / 0.998 | 86.9 s |
+| 10 000 | −1.227 / **−1.212** / −4.592 | 0.999 / 0.999 | 244.4 s |
+| 20 000 | −1.508 / **−1.491** / −5.283 | 1.000 / 1.000 | 887.8 s |
+
+**Implementation scaling is worse than the theory.** Wall-clock grows ~`O(d^1.44)`
+(40× in `d` → 206× in time), not `O(d log d)`: the blocked `kernel_matvec` uses
+`range/60` blocks and, at fixed spacing, the coordinate range grows ∝ `d`, so the
+number of *sequential* block iterations grows linearly and kernel-launch/Python
+overhead dominates at large `d`. The asymptotic *work* is still `O(d)`; the
+implementation is not. A fused kernel, or an associative-scan formulation of the
+block carry (as already done for the log-determinant), would recover it.
+
+Two caveats on how to read those rows:
 - they demonstrate **computational feasibility, not statistical benefit**: with
   `n = 3000` fixed, every `d ≥ 5000` row is in the `d > n` (rank-deficient) regime
   where the exact `full` posterior itself scores *worse* than diagonal, so the
   comparison is degenerate there. The statistically meaningful rows are `d ≤ 2000`
   (`n > d`), consistent with the `n ≳ d` requirement found throughout;
-- the blocked-rescaling fix costs ~2× per matvec asymptotically, but more on small
-  problems (d=500: 17.7 s vs 4.0 s per fit) because of per-block Python overhead;
+- the blocked-rescaling fix costs ~2× per matvec at fixed range, and progressively
+  more as the range (hence block count) grows — see the `O(d^1.44)` note above;
   a fused/segmented kernel would remove this.
+
+*Process note:* the first attempt at this run was contaminated — a previous
+instance was not killed before relaunching, so two processes shared the log file
+and the GPU until one hit a CUDA OOM. The predictive values were identical to the
+clean run, but the timings were inflated ~4×; only the clean run is cited. Stale
+`pgrep`-based waiter loops that matched their own command line (and so could never
+exit) were also cleaned up.
 
 ---
 
