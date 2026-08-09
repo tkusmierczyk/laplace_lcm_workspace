@@ -29,20 +29,38 @@ verdict — read this before §1–§7.
   correct scaling `fit_frobenius` matches the dense fit (0.2197 vs 0.2198 @ d=1500).
   Diagnosing it surfaced a genuine library bug (inverse-softplus overflow → NaN),
   now fixed with a stable helper + data-driven `auto_init` + regression test
-  (commit `db6a554`). So the scalability primitives are sound.
+  (commit `db6a554`).
+- **A second, more serious silent-NaN bug was then found in `kernel_matvec`** — the
+  very primitive that makes the matrix-free fit `O(d)`. It factored `exp(a_j−a_i)`
+  through a global offset, overflowing whenever the *coordinate range* exceeded
+  ~709 (float64), so `fit_frobenius` returned NaN for long chains — i.e. **the
+  scalable path was broken for exactly the large-`d` regime the scalability claim
+  rests on**, and the first Exp 7 run's `d ≥ 5000` rows were NaN. Fixed by blocked
+  rescaling (exact to ~1e-15, finite to range 1e4, ~2× cost; commits `b4d2323`,
+  `91b7d36`). **Lesson for the paper: any scalability claim must be demonstrated at
+  the target `d`, not extrapolated from small-`d` correctness tests** — two of the
+  three bugs in this project were silent numerical failures in exponential-family
+  primitives that small-scale tests passed.
 - **Statistical CIs** — Exp 8c: the joint-vs-marginal headline over **10 seeds
   with 95% CIs** (see `PROJECT_REPORT.md` §7).
 
 **Findings that revise the verdict:**
 - **The "learned coordinate" — LCM's main novelty over banded-GMRF / state-space-GP
   models — does NOT survive (Exp 10/10b + controls).** The model is
-  permutation-equivariant (given the right coordinates it works: +58% joint-gap
-  closed), but *fitting* `a` cannot **discover** a latent order: gradient descent
-  recovers |Spearman| ≈ 0.03 (random) and does **worse than diagonal** (−84%);
-  spectral seriation recovers only the coarse order (≈0.82). The kernel is so
-  fragile that even a 97.7%-correct order is worse than diagonal — it needs
-  ≳0.999. Net: the learned ordering only works when initialized at ≈ the true
-  order, i.e. when the order is already known, where it is **inactive/unnecessary**.
+  permutation-equivariant (given the right coordinates it works: **+58%** joint-gap
+  closed vs **+59%** for the learned-but-correctly-initialised variant), but
+  *fitting* `a` cannot **discover** a latent order. On permuted features (3 seeds,
+  d=800): learned recovery |Spearman| = **0.028** (≈ random) and joint-LL **−84%**
+  (i.e. *worse than diagonal*); spectral seriation recovery is highly variable —
+  **0.31 / 0.70 / 0.99 across seeds (mean 0.67)** — and its fitted variant scores
+  **−79%**. The fragility curve (Exp 10b, 3 seeds) locates the threshold sharply:
+  the chain beats diagonal at |Spearman| ≥ **0.999** and *fails* at **0.998**.
+  Since no recovery method reliably reaches 0.999, the learned ordering only works
+  when initialised at ≈ the true order — i.e. when the order is already known,
+  where it is **inactive/unnecessary** (real-data Exp 11: learned ≈ fixed).
+  *Mechanism nuance:* with a wrong order the **fixed**-order variant degrades
+  *gracefully* to diagonal (0%, it can decorrelate via the global spacing), whereas
+  the **learned** variant overfits into a confidently-wrong chain (−84%).
 - **Real data (Exp 11) confirms the niche but with the learned coordinate inactive.**
   On Tecator NIR (known wavelength order, n≈d) LCM closes **~100%** of the
   diagonal→full joint-LL gap and beats diagonal on marginal LL too — a genuine

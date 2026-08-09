@@ -118,7 +118,7 @@ NN-layer curvature is Kronecker-structured (KFAC's home), not chain-structured.
 | 6 | Per-layer (block-diagonal) LCM | KL to full improves 12–22% vs a single chain; still short of KFAC. |
 | 7 | 1-D-correlated GLM (LCM's "home") | The reframing: LCM's structure is only *correct* for genuinely 1-D-correlated, non-Kronecker curvature (GLMs with ordered features). |
 | 8/8b/8c | **Marginal vs joint predictive LL** | **The key positive, but modest.** Marginal LL: LCM ties (slightly worse than) diagonal — insensitive to off-diagonal covariance. **Joint LL: LCM closes a d-dependent fraction of the diagonal→full gap — 10-seed CI 62%±49% (d=500), 52%±16% (d=1000), 23%±12% (d=1500)** (§7). |
-| 10/10b + controls | **Does the *learned* ordering matter?** | Given the correct order, LCM works (58% joint-gap closed); with an unknown/permuted order, gradient learning recovers |Spearman| ≈ 0.03 and does **worse than diagonal**; classical seriation recovers only the coarse order (≈0.82). The kernel needs |Spearman| ≳ **0.999** to beat diagonal (fragility curve). The model is permutation-equivariant — the failure is purely that fitting `a` cannot discover a latent order. |
+| 10/10b + controls | **Does the *learned* ordering matter?** | Given the correct order LCM works (+58% joint-gap closed, learned-but-correctly-initialised +59%). With an unknown/permuted order, gradient learning recovers \|Spearman\| = **0.028** (≈ random) and lands at **−84%** (*worse than diagonal*); seriation recovery is highly seed-dependent (**0.31 / 0.70 / 0.99**, mean 0.67) and its variant scores −79%. Fragility curve: the chain beats diagonal at \|Spearman\| ≥ **0.999** but **fails at 0.998**. The model is permutation-**equivariant** — the failure is purely that fitting `a` cannot discover a latent order. Nuance: with a wrong order the *fixed*-order variant degrades **gracefully to diagonal** (0%), while the *learned* variant overfits into a confidently-wrong chain (−84%). |
 | 11 | **Real ordered data** (Tecator NIR, CO₂ lags) | On NIR (known wavelength order, n≈d): LCM **closes ~100%** of the diagonal→full joint-LL gap and beats diagonal on marginal too. On CO₂ (n≫d): gap negligible. In both, `LCM-learned ≈ LCM-fixed` — the **learned coordinate is inactive** because the order is already known. |
 
 **Conclusion of Phase 5:** the genuine, real-data-confirmed advantage of LCM is
@@ -217,7 +217,7 @@ and what could be done differently.
   **associative scan** gives `O(d log d)` depth; we implemented it, verified
   machine-precision agreement and differentiability, and measured **15–64×**
   speedups — removing the wall-clock weakness. Now the default.
-- **Bug found & fixed (matters for reproducibility).** The initial "matrix-free fit
+- **Bug 1 — fit initialization (found & fixed).** The initial "matrix-free fit
   is weak" conclusion was **our own bug**: the fit initialization was scaled for
   the unnormalized GGN while `fit_frobenius` targets `GGN/N`. Diagnosing it
   revealed a *second, genuine* library bug — the naive inverse-softplus
@@ -225,6 +225,36 @@ and what could be done differently.
   large diagonal scale (Adam then diverges silently). Fixed with a stable
   threshold-based `_inverse_softplus`, plus data-driven `auto_init` on both fitters.
   After the fix, matrix-free ≈ dense fit (0.2197 vs 0.2198 rel-Frobenius at d=1500).
+- **Bug 2 — `kernel_matvec` overflow for long chains (found & fixed).** The O(d)
+  prefix/suffix-sum factored `exp(a_j − a_i)` through a single global offset:
+  `exp(−(a_i−a_0)) · Σ_j exp(a_j−a_0) x_j`. Every kernel entry is ≤ 1 and every
+  exponent is non-positive, but the two factors were evaluated *separately*, so the
+  growing factor overflows to `inf` once the **coordinate range** exceeds ~709 in
+  float64 — yielding silent `NaN`. This depends on the *range*, not on `d`
+  (d=20000 at spacing 0.02 → range 400 worked; d=10000 at spacing 0.105 → range
+  1050 did not). **Impact:** `fit_frobenius` — precisely the *scalable* path —
+  silently returned NaN parameters for long chains, invalidating every `d ≥ 5000`
+  row of the first Exp 7 run. The Kalman/state-space primitives were unaffected
+  (they use local ratios `exp(−Δa) ≤ 1`). **Fix:** compute the decaying prefix in
+  log-space via `logcumsumexp` (`_decaying_prefix`), keeping the accumulator on the
+  `a_i` scale (commit `b4d2323`), then — after benchmarking showed that cost 13–20×
+  — replaced by **blocked rescaling** (commit `91b7d36`): blocks of coordinate range
+  ≤ 60 use the fast offset+`cumsum` trick internally, with the accumulator carried
+  across blocks rescaled by a factor ≤ 1. Verified exact vs the dense kernel
+  (~1e-15) at ranges up to 3000, finite for d=20000 at range 1e4, differentiable,
+  and only ~2× the unsafe original; regression test added.
+  **Lesson:** "each term is bounded" does not imply "the factorization is stable" —
+  the earlier code even documented the growing factor as "bounded by exp(range)"
+  without treating that as a failure mode.
+- **Bug 3 — wrong reference in the ordering diagnostic (found & fixed).** Exp 10/10b
+  measured order recovery against `argsort(perm)` (the *inverse* permutation)
+  instead of `perm`. Verified empirically: freezing `a = perm` fits the GGN to 0.14
+  rel-Frobenius, while `a = argsort(perm)` gives 0.98 (no structure captured). This
+  mis-stated the **seriation** recovery (reported 0.03; true value 0.31–0.99). The
+  substantive conclusions were unaffected — the joint-LL numbers never depended on
+  this diagnostic column, and the learned coordinate scores ≈0 against either
+  reference — but the corrected numbers make the finding *sharper* (seriation can
+  reach 0.99 and *still* be insufficient against the 0.999 threshold).
 
 ### 6.7 Baselines and protocol
 - Baselines: **Diag, KFAC, Full** Laplace, plus MAP; LowRank was dropped (its
@@ -263,10 +293,28 @@ structure. (An earlier 3-seed run with a near-zero nugget reported 70–81%; the
 10-seed number with the library's default fit is the trustworthy one, and the gap
 is sensitive to the nugget fraction — a tuning knob, not a robust large effect.)
 
-**Ordering (Exp 10, d=800, joint-LL gap-to-full closed):**
-- Known order: LCM-fixed **+58%**, LCM-learned **+59%** (recovery |Spearman| 1.00).
-- Unknown/permuted order: LCM-fixed **0%**, LCM-learned **−84%** (recovery 0.03),
-  seriation **−79%**. Fragility: chain needs |Spearman| ≳ 0.999 to beat diagonal.
+**Ordering (Exp 10, d=800, n=3000, 3 seeds; joint-LL gap-to-full closed):**
+
+| condition | LCM-fixed(natural) | LCM-fixed(seriation) | LCM-learned | learned recovery |
+|---|---|---|---|---|
+| order **known** (natural) | **+58%** | −79% | **+59%** | 1.000 |
+| order **latent** (permuted) | 0% (→ diagonal) | −79% | **−84%** | 0.028 |
+
+**Ordering fragility (Exp 10b, d=400, 3 seeds)** — how accurate must the order be?
+Order accuracy was degraded by adding position noise to the true order:
+
+| \|Spearman\| | 1.000 | 0.9997 | 0.9999 | 0.9994 | **0.998** | 0.991 | 0.967 |
+|---|---|---|---|---|---|---|---|
+| joint-LL | −0.853 | −0.852 | −0.852 | −0.858 | −0.870 | −0.885 | −0.892 |
+| beats diagonal (−0.865)? | ✔ | ✔ | ✔ | ✔ | **✘** | ✘ | ✘ |
+
+The threshold is sharp and extreme: **≥0.999 works, 0.998 already fails.**
+Recovery attempts fall far short — seriation 0.31/0.70/0.99 (mean 0.67), learned
+coordinate 0.05/0.07/0.05 (mean 0.058).
+
+*Caveat (seed variance):* in 1 of 3 fragility seeds diagonal actually beat full
+(−0.830 vs −0.836), i.e. the premise "full > diagonal" is itself noisy at this
+size; the threshold conclusion holds on the mean but individual seeds vary.
 
 **Real data (Exp 11, joint-LL gap-to-full closed by LCM):**
 - Tecator NIR (n=144, d=100, order known): **~100%** (also beats diagonal on
@@ -275,6 +323,18 @@ is sensitive to the nugget fraction — a tuning knob, not a robust large effect
 
 **Cost:** `3d` covariance storage vs `d²` (full); exact `O(d log d)` log-det, 15–64×
 faster than the sequential version and feasible where dense OOMs.
+
+**Scaling of the matrix-free fit (Exp 7).** After the `kernel_matvec` fix, the
+matrix-free `fit_frobenius` runs to large `d` without NaN (it previously returned
+NaN for every `d ≥ 5000`). Two caveats on how to read those rows:
+- they demonstrate **computational feasibility, not statistical benefit**: with
+  `n = 3000` fixed, every `d ≥ 5000` row is in the `d > n` (rank-deficient) regime
+  where the exact `full` posterior itself scores *worse* than diagonal, so the
+  comparison is degenerate there. The statistically meaningful rows are `d ≤ 2000`
+  (`n > d`), consistent with the `n ≳ d` requirement found throughout;
+- the blocked-rescaling fix costs ~2× per matvec asymptotically, but more on small
+  problems (d=500: 17.7 s vs 4.0 s per fit) because of per-block Python overhead;
+  a fused/segmented kernel would remove this.
 
 ---
 
@@ -299,9 +359,30 @@ faster than the sequential version and feasible where dense OOMs.
 6. **Approximations.** GGN/empirical-Fisher (not exact Hessian/true Fisher) for the
    NN experiments (exact for the GLM ones); heuristic noise in the real-data first
    pass; modest dataset count (2 real datasets × 5 splits).
-7. **Bugs encountered.** An init-scale mistake in experiment scripts (fixed) and a
-   genuine inverse-softplus overflow in the library (fixed) — both would have
-   silently corrupted the matrix-free results; documented and regression-tested.
+7. **Bugs encountered (all fixed, all regression-tested).** Three, and notably
+   *all three failed silently* rather than raising:
+   (a) an init-scale mistake in the experiment scripts;
+   (b) an **inverse-softplus overflow** in the library (`log(expm1(x))` → inf/NaN
+       for large diagonal scales, making Adam diverge);
+   (c) a **`kernel_matvec` overflow** for coordinate ranges > ~709, which returned
+       NaN from the *matrix-free* fit and invalidated every `d ≥ 5000` row of the
+       first Exp 7 run;
+   plus (d) a wrong reference (`argsort(perm)` vs `perm`) in the ordering-recovery
+   *diagnostic*, which mis-stated seriation's recovery. The recurring theme —
+   silent numerical failure in exponential-family primitives — is the main
+   engineering risk in this method family, and argues for finite-value assertions
+   in the fit loop.
+8. **Cost of the stability fix (measured, then reduced).** The first stable
+   rewrite used `logcumsumexp`: exact, but **13–20× slower** than `cumsum`
+   (56 ms vs 2.9 ms at n=3000, d=500) — enough to make the matrix-free fit
+   impractical. It was replaced by **blocked rescaling** (blocks of coordinate
+   range ≤ 60, carrying a running accumulator rescaled to each block's origin by a
+   factor ≤ 1), which is exact to ~1e-15, finite at ranges up to 1e4, and only
+   **~2×** the cost of the unsafe original. Lesson: a numerically-safe rewrite
+   should be benchmarked, not assumed cheap.
+9. **Reproducibility gap now closed.** `run_all.py` originally listed only
+   experiments 1–4, so the documented "reproduce the campaign" command silently
+   skipped everything after; it now enumerates all 15 experiments in phase order.
 
 ---
 

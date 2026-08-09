@@ -137,7 +137,11 @@ def run(d, seed, condition, n=3000, rho=0.9, ntest=400, noise=0.5, prior=1.0):
         g = torch.Generator().manual_seed(1000 + seed)
         perm = torch.randperm(d, generator=g)
         X, Xt = X[:, perm], Xt[:, perm]
-        true_order = torch.argsort(perm)  # position of each (permuted) feature on the line
+        # X[:, perm] puts original column perm[j] at position j, and original column
+        # i carries latent coordinate i -- so permuted column j has coordinate perm[j].
+        # (Verified empirically: freezing a=perm fits the GGN to 0.14 rel-Frobenius,
+        # whereas a=argsort(perm) gives 0.98, i.e. no structure captured.)
+        true_order = perm
     else:
         true_order = torch.arange(d)
 

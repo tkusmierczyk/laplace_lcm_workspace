@@ -9,11 +9,28 @@ import runpy
 import sys
 
 EXPERIMENTS = [
-    "experiments/exp1_fidelity.py",
-    "experiments/exp2_uci.py",
-    "experiments/exp3_image.py",
-    "experiments/exp4_scaling.py",
+    # --- initial evaluation vs MAP / Diag / KFAC / Full ---
+    "experiments/exp1_fidelity.py",        # posterior fidelity + when-structure-helps
+    "experiments/exp2_uci.py",             # UCI regression UQ
+    "experiments/exp3_image.py",           # MNIST last-layer calibration + OOD
+    "experiments/exp3b_cifar.py",          # CIFAR-10 last-layer calibration + OOD
+    "experiments/exp4_scaling.py",         # cost/scaling + ablations
+    "experiments/exp4b_ablation_controlled.py",  # controlled chain-recovery ablation
+    # --- search for a compelling use ---
+    "experiments/exp5_epistemic.py",       # epistemic (MI/BALD) OOD scores
+    "experiments/exp6_perlayer.py",        # per-layer (block-diagonal) LCM
+    "experiments/exp7_correlated_glm.py",  # 1-D-correlated GLM (LCM's home regime)
+    "experiments/exp8b_joint_robust.py",   # joint vs marginal predictive UQ
+    "experiments/exp9_active_learning.py", # batch active learning (negative result)
+    # --- publication hardening ---
+    "experiments/exp8c_joint_ci.py",       # headline joint-UQ result, 10 seeds + CIs
+    "experiments/exp10_ordering.py",       # learned vs fixed vs seriation ordering
+    "experiments/exp10b_fragility.py",     # ordering fragility + recovery failure
+    "experiments/exp11_realdata.py",       # real ordered-feature data (NIR, CO2)
 ]
+
+# Diagnostics (print-only, no CSV): exp8_joint.py, ctrl_ordering.py,
+# diag_matfree_init.py -- run individually if needed.
 
 if __name__ == "__main__":
     sys.path.insert(0, "experiments")

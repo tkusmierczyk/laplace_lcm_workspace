@@ -96,7 +96,8 @@ def main():
         perm = torch.randperm(d, generator=g)
         Xp = X[:, perm]
         GGN = Xp.T @ Xp / noise**2
-        true_order = torch.argsort(perm).double()
+        # permuted column j carries latent coordinate perm[j] (see exp10_ordering)
+        true_order = perm.double()
         # classical spectral seriation
         seri = E.fiedler_order(GGN)
         sp_seri = abs(spearmanr(
