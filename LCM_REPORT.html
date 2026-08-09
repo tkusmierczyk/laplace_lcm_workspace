@@ -780,27 +780,153 @@
     concede this and differentiate on the systems contribution, not on the covariance family.</p>
   </div>
 
-  <h3>Highest-value next steps</h3>
-  <ol class="col">
-    <li><strong>Do not buy compute.</strong> A larger model or a cluster is the one intervention the
-    audit shows provably cannot help weight-space Laplace — the Kronecker-vs-chain mismatch is
-    representational and <em>widens</em> with scale. Redirect any budget to breadth instead.</li>
-    <li><strong>Add datasets, not size.</strong> More real known-order data — spectroscopy beyond
-    Tecator, genomics with linkage disequilibrium, climate/spatial transects — at <code>n ≳ d</code>,
-    with marginal-likelihood-tuned noise and ≥10 seeds. This is what moves the joint-UQ claim from
-    one dataset to a regime.</li>
-    <li>Wire the matrix-free fit through <code>LCMLaplace</code> end-to-end so the scalability claim
-    holds for the class, not just the primitives.</li>
-    <li>Fix the <code>O(d^1.44)</code> implementation scaling with an associative-scan block carry —
-    the same trick already used for the log-determinant. This is the weakest part of the systems
-    story and it is fixable.</li>
-    <li>Scope one genuinely untested Bayesian setting: <strong>functional / GP-space Laplace</strong>,
-    where the correlated variables are <em>data points</em> rather than weights and the covariance
-    over points is genuinely Matérn-like. Be aware this is classical state-space-GP territory — a
-    systems contribution, not novelty.</li>
-    <li><strong>Do not pursue ordering recovery</strong> expecting a win. The ≥0.999 fragility
-    threshold means even an excellent seriation is insufficient; expected value is poor.</li>
-  </ol>
+  <p class="col">Concrete follow-ups, ranked by expected value, are in the
+  <a href="#followups">next section</a>.</p>
+</section>
+
+<hr class="rule">
+
+<section id="followups">
+  <div class="eyebrow">Where to go next</div>
+  <h2>Follow-ups — what to do, why, and what it would buy</h2>
+  <div class="col">
+  <p>Ranked by expected value, not by ease. Each entry states the <strong>gap it addresses</strong>,
+  <strong>what it would give</strong> if it works, and an honest <strong>effort / risk</strong> read.
+  The tiers matter: Tier 1 is what stands between this work and a submission; Tier 2 are research
+  bets that could genuinely <em>change</em> the conclusions; Tier 3 improves the artifact but will
+  not move any result. The last group is what <em>not</em> to spend on — knowing that is worth as
+  much as the rest.</p>
+  </div>
+
+  <div class="phase">Tier 1 · Required to publish</div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">F1</span>
+      <h3>More real known-order datasets</h3>
+      <span class="chip c-pos">highest value</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Gap</span><div class="v"><p>The entire positive finding rests on <strong>one</strong> real dataset. Tecator NIR closed ~100% of the diagonal→full joint-LL gap; the second real dataset (CO₂) was null because <code>n ≫ d</code> left nothing to win. One dataset is not a regime, and no reviewer will accept it.</p></div></div>
+      <div><span class="k">What it gives</span><div class="v"><p>Converts “LCM helped on Tecator” into “LCM helps for ordered-feature models with <code>n ≳ d</code>” — i.e. an empirical claim with a stated scope. This single item is the difference between a workshop note and a defensible TMLR submission.</p></div></div>
+      <div><span class="k">How</span><div class="v"><p>Target data with a genuine 1-D order and <code>n ≳ d</code>: NIR/Raman chemometrics beyond Tecator, mass-spectrometry, genomics with linkage-disequilibrium structure, climate or soil transects. Use marginal-likelihood-tuned noise (not the heuristic used in the first pass) and ≥10 seeds. Pre-register the prediction: marginal LL ties diagonal, joint LL beats it.</p></div></div>
+      <div><span class="k">Effort / risk</span><div class="v"><p>Low effort — the harness already exists. <strong>Moderate risk:</strong> it may simply not replicate, in which case the honest paper is a pure negative result. That is a real possible outcome and should be accepted in advance.</p></div></div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">F2</span>
+      <h3>Fix the <code>O(d^1.44)</code> scaling with an associative-scan block carry</h3>
+      <span class="chip c-pos">high value, low risk</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Gap</span><div class="v"><p>The systems contribution is the least disputable part of this work — and its headline claim is currently untrue in wall-clock. The blocked kernel's <em>sequential</em> block count grows with the coordinate range, so measured cost scales <code>O(d^1.44)</code>, not <code>O(d log d)</code>.</p></div></div>
+      <div><span class="k">What it gives</span><div class="v"><p>Makes the one unambiguous contribution actually hold end-to-end, and removes the most obvious attack on it. It also compounds: every fit, every experiment at large <code>d</code>, gets cheaper, which makes F1 and F5 practical.</p></div></div>
+      <div><span class="k">How</span><div class="v"><p>The block-carry recursion is a first-order linear recurrence with coefficients ≤ 1 — exactly the form already solved by the 2×2 associative scan written for the log-determinant. Reuse that machinery instead of the sequential Python loop over blocks.</p></div></div>
+      <div><span class="k">Effort / risk</span><div class="v"><p>Low–moderate effort; the machinery exists and is tested. <strong>Low risk</strong> — this is engineering with a known solution, and correctness is checkable against the dense kernel.</p></div></div>
+    </div>
+  </div>
+
+  <div class="phase">Tier 2 · Research bets that could change the conclusions</div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">F3</span>
+      <h3>Higher-order Matérn (3/2, 5/2) — attack the fragility at its root</h3>
+      <span class="chip c-warn">most interesting bet</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Gap</span><div class="v"><p>The finding that kills the method's novelty is the <strong>ordering fragility</strong>: ≥0.999 accuracy required, 0.998 already fails. The <em>cause</em> is bandwidth-1 exponential decay — adjacent coordinates are asserted to be strongly correlated, so a single misplacement injects a large false correlation. Every other limitation follows from this one.</p></div></div>
+      <div><span class="k">What it gives</span><div class="v"><p>A Matérn-3/2 or 5/2 kernel has a <em>banded</em> (bandwidth 2–3) precision and smoother sample paths, so a misplaced coordinate is penalised far less. If that lowers the tolerance from 0.999 to, say, 0.99, then <strong>seriation becomes viable</strong> — and with it the entire learned/recovered-ordering story reopens, along with the unknown-order applications currently closed. This is the highest-leverage single change in the whole project: it attacks the root cause rather than working around it.</p></div></div>
+      <div><span class="k">How</span><div class="v"><p>Matérn half-integer kernels have standard linear state-space representations, so the Kalman/associative-scan machinery generalises directly — the state dimension grows from 1 to 2 or 3. Re-run the fragility sweep (Exp 10b) per kernel order and read off the new threshold.</p></div></div>
+      <div><span class="k">Effort / risk</span><div class="v"><p>Moderate effort. <strong>Medium risk:</strong> smoother kernels may simply fit real curvature worse, trading fragility for bias. But the experiment is cheap and the answer is decisive either way — run the fragility sweep <em>before</em> committing to anything downstream.</p></div></div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">F4</span>
+      <h3>Kronecker × chain hybrid — use LCM <em>inside</em> KFAC's factors</h3>
+      <span class="chip c-warn">the audit points here</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Gap</span><div class="v"><p>The audit established two facts that have not yet been combined: (i) neural-network layer curvature is <strong>Kronecker</strong> (<code>Λ ⊗ ΦΦᵀ</code>), which is why a global chain fails; (ii) the paper's own success is on <strong>feature maps</strong>, which do have spatial 1-D structure. But <code>ΦΦᵀ</code> — KFAC's second factor — <em>is</em> a feature covariance.</p></div></div>
+      <div><span class="k">What it gives</span><div class="v"><p>Keep Kronecker for the layer structure (where it demonstrably belongs) and use LCM for the <em>within-factor</em> feature covariance (where the paper showed chains belong). For a wide layer whose input factor is <code>in × in</code>, that replaces a dense factor with <code>3·in</code> parameters — a cheaper KFAC rather than a worse one. It is the only route identified that could make LCM useful for neural networks, and it is a genuinely novel combination rather than a re-derivation of banded GMRFs.</p></div></div>
+      <div><span class="k">How</span><div class="v"><p>Fit LCM to KFAC's input factor (and optionally the output factor), using raster/channel order as the initialisation for conv layers. Compare against full KFAC on KL-to-full and predictive metrics, at matched memory.</p></div></div>
+      <div><span class="k">Effort / risk</span><div class="v"><p>Moderate–high effort. <strong>Medium risk:</strong> the audit's quick feature-map test was unflattering (0.924 vs diagonal 0.967), though confounded by rank deficiency. Test the factor-fit quality first — it is a cheap go/no-go before building anything.</p></div></div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">F5</span>
+      <h3>Functional / GP-space Laplace — change what the variables <em>are</em></h3>
+      <span class="chip c-inf">scoping experiment</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Gap</span><div class="v"><p>Every experiment here placed LCM in <em>weight</em> space, which the audit showed is the wrong habitat by construction. The untested alternative: make the correlated variables <strong>data points</strong> rather than weights.</p></div></div>
+      <div><span class="k">What it gives</span><div class="v"><p>For data with a natural 1-D index — time series, spectra, spatial transects — the covariance <em>over points</em> is genuinely Matérn-like, so LCM is exactly the right model rather than an approximation, and gives a linear-time GP posterior. It also plugs into the functional Laplace already in the library (<code>hessian_structure="gp"</code>).</p></div></div>
+      <div><span class="k">Effort / risk</span><div class="v"><p>Moderate effort. <strong>High novelty risk:</strong> this is classical state-space-GP territory (Hartikainen &amp; Särkkä; Lindgren–Rue–Lindström), so the contribution would be integration and systems, not a new model. Worth one scoping experiment to size the win before committing — do not build it out first.</p></div></div>
+    </div>
+  </div>
+
+  <div class="phase">Tier 3 · Improves the artifact, will not change any conclusion</div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">F6</span>
+      <h3>Matrix-free <code>LCMLaplace</code> end-to-end</h3>
+      <span class="chip c-inf">engineering</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Gap</span><div class="v"><p>The class materialises the dense GGN, so the <code>O(P)</code> scalability holds for the <em>primitives</em> but not for the <em>class</em>, which is capped at moderate <code>P</code>.</p></div></div>
+      <div><span class="k">What it gives</span><div class="v"><p>A structured Laplace usable at <code>P ≥ 10⁵</code> as a product rather than a component — the difference between “the maths scales” and “the tool scales”. Valuable for the library and for anyone building on it.</p></div></div>
+      <div><span class="k">Effort / risk</span><div class="v"><p>Moderate–high effort, low technical risk. <strong>But be clear-eyed: it will not change a single scientific conclusion</strong>, because weight-space is the wrong habitat regardless of how large it gets. Do this for the artifact, not for the paper.</p></div></div>
+    </div>
+  </div>
+
+  <div class="exp">
+    <div class="exp-head">
+      <span class="exp-id">F7</span>
+      <h3>Rank-aware fitting for the <code>n ≪ d</code> regime</h3>
+      <span class="chip c-warn">may be fundamental</span>
+    </div>
+    <div class="anat">
+      <div><span class="k">Gap</span><div class="v"><p>The fit degrades badly when curvature is low-rank — residual 0.13 at <code>n=3000</code> versus <strong>0.74</strong> at <code>n=40</code> — which is precisely why batch active learning failed, and why the paper's own <code>n ≪ D</code> regime yields poor absolute fits.</p></div></div>
+      <div><span class="k">What it gives</span><div class="v"><p>Would reopen the low-data applications currently closed: batch active learning, Bayesian optimisation, sequential design — the natural consumers of joint uncertainty. It would also make comparisons against the paper's regime fairer.</p></div></div>
+      <div><span class="k">Effort / risk</span><div class="v"><p>Moderate effort. <strong>High risk, and possibly fundamental:</strong> a rank-40 target may simply not contain enough information to identify <code>3d</code> parameters, in which case no objective fixes it. Note also that Exp 9's failure may have had two causes — fit quality <em>and</em> greedy selection — so isolate them before investing.</p></div></div>
+    </div>
+  </div>
+
+  <div class="phase">Do not spend here</div>
+
+  <div class="callout neg">
+    <span class="lb">Bigger models or a compute cluster</span>
+    <p><strong>Why not:</strong> the audit measured the Kronecker-vs-chain gap <em>widening</em> with
+    layer width (0.530 → 0.451 for Kronecker while the chain stayed at 0.733 → 0.709). The mismatch
+    is representational, so scale makes KFAC relatively better, not LCM. <strong>What you would
+    get:</strong> a more expensive confirmation of a result already in hand. This is the one
+    intervention that provably cannot work.</p>
+  </div>
+
+  <div class="callout neg">
+    <span class="lb">Better ordering recovery (seriation, discrete search, learned embeddings)</span>
+    <p><strong>Why not — conditionally.</strong> The requirement is ≥0.999 accuracy; measured
+    recovery is 0.31–0.99 for spectral seriation (mean 0.67) and ≈0.03 for gradient learning. Even
+    an excellent ordering falls short, so effort spent here is wasted <em>at the current kernel
+    bandwidth</em>. <strong>This is gated on F3:</strong> if a higher-order Matérn lowers the
+    threshold to ~0.99, this becomes one of the most valuable directions instead of one of the worst.
+    Run F3 first; let its result decide.</p>
+  </div>
+
+  <div class="callout">
+    <span class="lb">Suggested order</span>
+    <p><strong>F2</strong> (cheap, unblocks everything) → <strong>F3</strong> (cheap, decisive, and
+    gates the ordering question) → <strong>F1</strong> (determines whether there is a paper) →
+    then F4 or F5 depending on whether F3 reopened the neural-network case. F6 and F7 only if the
+    library itself is the goal.</p>
+  </div>
 </section>
 
 <hr class="rule">
