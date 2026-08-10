@@ -32,6 +32,17 @@ primitives:
 The dense helpers (``dense``, dense log-det, etc.) are exact and used to validate
 the fast paths in the tests; they are ``O(dim^2)``/``O(dim^3)`` and only meant for
 the moderate-dimensional regime.
+
+PROVENANCE
+----------
+The core filter is a port of the authors' reference implementation
+(``efficient_inversion/resnet34/lcm.py`` in REMIX-Model-Inversion-via-Laplace-Kernel):
+both associative scans, the 2x2 prefix product, the parameterisation, and the NLL.
+Everything beyond that -- standalone log-determinant, quadratic forms, sampling,
+prior handling, the Appendix-A/B fitting and prefix-sum kernels, and the numerical
+hardening -- is added here because a *posterior* needs more than a likelihood term.
+``LCM_PROVENANCE.md`` (next to this file) maps every function to its origin, lists
+the deliberate deviations, and records the equivalence evidence.
 """
 
 from __future__ import annotations
@@ -44,6 +55,7 @@ __all__ = [
     "LCMCovariance",
     "kernel_matvec",
     "kalman_stats",
+    "kalman_stats_sequential",
     "logdet_from_params",
     "logdet_parallel",
 ]
@@ -66,21 +78,110 @@ def kalman_stats(
     d: torch.Tensor,
     y: torch.Tensor | None = None,
 ):
-    """Sequential Kalman filter for ``A = diag(d) + diag(w) K(a) diag(w)``.
+    """Kalman filter for ``A = diag(d) + diag(w) K(a) diag(w)`` via two associative
+    scans -- a direct port of the reference implementation.
+
+    PROVENANCE: mirrors ``LCM.log_likelihood`` of the authors' ``lcm.py``
+    (REMIX-Model-Inversion-via-Laplace-Kernel, ``efficient_inversion/resnet34/lcm.py``),
+    including both of its ``_parallel_matrix_prefix_prod`` scans:
+      * scan 1 -- the variance (Riccati) recursion  -> innovation variances ``S``
+      * scan 2 -- the mean recursion                -> innovations ``v``
+    Deviations from the reference are limited to: float64 throughout (the reference
+    casts to float64 only inside the scan), a configurable nugget ``eps`` (the
+    reference hardcodes ``1e-5`` in this function while its ``__init__`` default is
+    ``1e-6``), and returning ``(S, v)`` instead of a scalar likelihood so the pieces
+    can be reused for log-determinants and quadratic forms.
 
     Treats ``A`` as the covariance of ``x = diag(w) z + eta`` with a latent AR(1)
     chain ``z`` (stationary unit variance) and independent noise ``eta ~ N(0, diag(d))``.
 
-    Returns the innovation variances ``S`` (shape ``(dim,)``, in ascending-``a``
-    order) and, if ``y`` is given (already mean-subtracted, shape ``(..., dim)``),
-    the whitened innovations ``v`` with ``v_k ~ N(0, S_k)`` independent. Then
+    Returns the innovation variances ``S`` (shape ``(dim,)``, ascending-``a`` order)
+    and, if ``y`` is given (already mean-subtracted, shape ``(..., dim)``), the
+    innovations ``v`` with ``v_k ~ N(0, S_k)`` independent. Then
     ``log det A = sum_k log S_k`` and ``y^T A^{-1} y = sum_k v_k^2 / S_k``.
     """
     dim = a.shape[-1]
     a_s, idx = torch.sort(a)
     w_s, d_s = w[idx], d[idx]
+    if dim == 1:  # degenerate chain: no transitions
+        S = (w_s**2 + d_s).clamp(min=1e-12)
+        if y is None:
+            return S, None
+        return S, y.index_select(-1, idx)
+
     dt = (a_s[1:] - a_s[:-1]).clamp(min=1e-12)
-    phi = torch.exp(-dt)  # (dim-1,)
+    phi = torch.exp(-dt)
+    phi2 = phi**2
+    q = (1.0 - phi2).clamp(min=1e-12)
+
+    # --- scan 1: variance / Riccati recursion (reference lines 55-82) ---------
+    M = torch.zeros(dim, 2, 2, dtype=w_s.dtype, device=w_s.device)
+    M[0, 0, 1] = d_s[0]
+    M[0, 1, 1] = w_s[0] ** 2 + d_s[0]
+    w2 = w_s[1:] ** 2
+    M[1:, 0, 0] = d_s[1:] * phi2
+    M[1:, 0, 1] = d_s[1:] * q
+    M[1:, 1, 0] = w2 * phi2
+    M[1:, 1, 1] = w2 * q + d_s[1:]
+
+    Mc = _parallel_prefix_2x2(M)
+    denom = (Mc[:, 1, 0] + Mc[:, 1, 1]).clamp(min=1e-30)
+    P_filt = ((Mc[:, 0, 0] + Mc[:, 0, 1]) / denom).clamp(min=0.0)
+
+    P_prev = torch.ones(dim, dtype=w_s.dtype, device=w_s.device)
+    P_prev = torch.cat([P_prev[:1], P_filt[:-1]])
+    phi2v = torch.cat([torch.ones(1, dtype=w_s.dtype, device=w_s.device), phi2])
+    qv = torch.cat([torch.zeros(1, dtype=w_s.dtype, device=w_s.device), q])
+    P_pred = (phi2v * P_prev + qv).clamp(min=1e-12)
+    S = (w_s**2 * P_pred + d_s).clamp(min=1e-12)
+    if y is None:
+        return S, None
+
+    # --- scan 2: mean recursion (reference lines 84-107) ----------------------
+    # m_k = alpha_k m_{k-1} + beta_k  is affine, so it composes as the 2x2 matrices
+    # [[alpha, beta], [0, 1]]; the prefix product is normalised inside the scan, so
+    # the affine part is recovered as entry (0,1) divided by entry (1,1).
+    K_gain = (P_pred * w_s) / S
+    y_s = y.index_select(-1, idx)
+
+    alpha = torch.cat(
+        [torch.ones(1, dtype=w_s.dtype, device=w_s.device), phi * (1.0 - K_gain[1:] * w_s[1:])]
+    )
+    beta = K_gain * y_s  # (..., dim)
+
+    Mm = torch.zeros(*beta.shape, 2, 2, dtype=w_s.dtype, device=w_s.device)
+    Mm[..., 0, 0] = alpha.expand_as(beta)
+    Mm[..., 0, 1] = beta
+    Mm[..., 1, 1] = 1.0
+
+    Mmc = _parallel_prefix_2x2(Mm)
+    m = Mmc[..., 0, 1] / Mmc[..., 1, 1].clamp(min=1e-30)
+
+    m_prev = torch.cat([torch.zeros_like(m[..., :1]), m[..., :-1]], dim=-1)
+    phiv = torch.cat([torch.ones(1, dtype=w_s.dtype, device=w_s.device), phi])
+    v = y_s - w_s * phiv * m_prev
+    return S, v
+
+
+def kalman_stats_sequential(
+    a: torch.Tensor,
+    w: torch.Tensor,
+    d: torch.Tensor,
+    y: torch.Tensor | None = None,
+):
+    """Reference (textbook) sequential Kalman filter -- same contract as
+    :func:`kalman_stats`.
+
+    Kept deliberately as an independent, easy-to-audit implementation: it shares no
+    code with the scan-based version, so the two agreeing is a genuine cross-check
+    of the ported scans. ``O(dim)`` sequential steps, so it is slow for large
+    ``dim``; prefer :func:`kalman_stats`.
+    """
+    dim = a.shape[-1]
+    a_s, idx = torch.sort(a)
+    w_s, d_s = w[idx], d[idx]
+    dt = (a_s[1:] - a_s[:-1]).clamp(min=1e-12)
+    phi = torch.exp(-dt)
     q = (1.0 - phi**2).clamp(min=0.0)
 
     want_v = y is not None
@@ -89,8 +190,6 @@ def kalman_stats(
         m_filt = torch.zeros(y_s.shape[:-1], dtype=w_s.dtype, device=w_s.device)
         v_list = []
 
-    # Accumulate S in a Python list + stack (autograd-friendly; the log-det must be
-    # differentiable w.r.t. w/d so the marginal likelihood can be optimised).
     S_list = []
     P_pred = torch.ones((), dtype=w_s.dtype, device=w_s.device)  # z_0 stationary var
     P_filt = None
@@ -99,7 +198,7 @@ def kalman_stats(
             P_pred = phi[k - 1] ** 2 * P_filt + q[k - 1]
         S_k = w_s[k] ** 2 * P_pred + d_s[k]
         S_list.append(S_k)
-        gain = P_pred * w_s[k] / S_k  # Kalman gain
+        gain = P_pred * w_s[k] / S_k
         if want_v:
             m_pred = phi[k - 1] * m_filt if k > 0 else torch.zeros_like(m_filt)
             v_k = y_s[..., k] - w_s[k] * m_pred
@@ -114,7 +213,7 @@ def kalman_stats(
 
 
 def logdet_from_params(a: torch.Tensor, w: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
-    """``log det (diag(d) + diag(w) K(a) diag(w))`` in ``O(dim)`` (sequential Kalman)."""
+    """``log det (diag(d) + diag(w) K(a) diag(w))`` via the scan-based filter."""
     S, _ = kalman_stats(a, w, d, None)
     return torch.log(S).sum()
 
@@ -140,38 +239,13 @@ def _parallel_prefix_2x2(M: torch.Tensor) -> torch.Tensor:
 
 
 def logdet_parallel(a: torch.Tensor, w: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
-    """``log det (diag(d) + diag(w) K(a) diag(w))`` via an associative 2x2-matrix
-    scan of the Kalman variance (Riccati) recursion -- ``O(dim log dim)`` *depth*,
-    fully vectorised (no Python loop over dimensions). Numerically matches
-    :func:`logdet_from_params`; preferable for large ``dim``."""
-    a_s, idx = torch.sort(a)
-    w_s, d_s = w[idx], d[idx]
-    C = a_s.shape[-1]
-    dt = (a_s[1:] - a_s[:-1]).clamp(min=1e-12)
-    phi2 = torch.exp(-2.0 * dt)
-    q = (1.0 - phi2).clamp(min=1e-12)
+    """``log det (diag(d) + diag(w) K(a) diag(w))``.
 
-    M = torch.zeros(C, 2, 2, dtype=w_s.dtype, device=w_s.device)
-    M[0, 0, 1] = d_s[0]
-    M[0, 1, 1] = w_s[0] ** 2 + d_s[0]
-    w2 = w_s[1:] ** 2
-    M[1:, 0, 0] = d_s[1:] * phi2
-    M[1:, 0, 1] = d_s[1:] * q
-    M[1:, 1, 0] = w2 * phi2
-    M[1:, 1, 1] = w2 * q + d_s[1:]
-
-    Ccum = _parallel_prefix_2x2(M)
-    denom = (Ccum[:, 1, 0] + Ccum[:, 1, 1]).clamp(min=1e-30)
-    P_filt = ((Ccum[:, 0, 0] + Ccum[:, 0, 1]) / denom).clamp(min=0.0)
-
-    P_prev = torch.ones(C, dtype=w_s.dtype, device=w_s.device)
-    P_prev[1:] = P_filt[:-1]
-    phi2v = torch.ones(C, dtype=w_s.dtype, device=w_s.device)
-    phi2v[1:] = phi2
-    qv = torch.zeros(C, dtype=w_s.dtype, device=w_s.device)
-    qv[1:] = q
-    P_pred = (phi2v * P_prev + qv).clamp(min=1e-12)
-    S = (w_s**2 * P_pred + d_s).clamp(min=1e-12)
+    Thin alias for :func:`kalman_stats` (which now performs the variance scan in
+    parallel, as the reference implementation does). Kept as a named entry point
+    because callers -- e.g. ``LCMLaplace.log_det_posterior_precision`` -- refer to it.
+    """
+    S, _ = kalman_stats(a, w, d, None)
     return torch.log(S).sum()
 
 

@@ -20,7 +20,13 @@ from laplace import (
     LCMLaplace,
     LCMLLLaplace,
 )
-from laplace.lcm import kernel_matvec, logdet_from_params, logdet_parallel
+from laplace.lcm import (
+    kalman_stats,
+    kalman_stats_sequential,
+    kernel_matvec,
+    logdet_from_params,
+    logdet_parallel,
+)
 
 DT = torch.float64
 
@@ -55,6 +61,39 @@ def test_kernel_matvec_matches_dense():
     x = torch.randn(5, lcm.dim)
     assert torch.allclose(kernel_matvec(lcm.a, x), x @ lcm.kernel().T, atol=1e-9)
     assert torch.allclose(lcm.matvec(x), x @ lcm.dense().T, atol=1e-9)
+
+
+def test_scan_filter_matches_sequential_reference():
+    """The ported two-scan Kalman filter (mirroring the authors' `log_likelihood`)
+    must agree with the independent sequential reference implementation and with
+    the dense ground truth -- innovation variances AND innovations."""
+    import torch.nn.functional as Fn
+
+    for C in [1, 2, 17, 128, 600]:
+        a = torch.sort(torch.randn(C, dtype=DT))[0]
+        w = torch.randn(C, dtype=DT) * 0.7
+        d = Fn.softplus(torch.randn(C, dtype=DT) * 0.5) + 1e-6
+        y = torch.randn(3, C, dtype=DT)
+
+        S_par, v_par = kalman_stats(a, w, d, y)
+        S_seq, v_seq = kalman_stats_sequential(a, w, d, y)
+        assert torch.allclose(S_par, S_seq, atol=1e-10)
+        assert torch.allclose(v_par, v_seq, atol=1e-9)
+
+        # against the dense reference
+        K = torch.exp(-torch.abs(a[:, None] - a[None, :]))
+        A = torch.diag(d) + w[:, None] * K * w[None, :]
+        assert torch.allclose(torch.log(S_par).sum(), torch.logdet(A), atol=1e-8)
+        quad = torch.einsum("bi,ij,bj->b", y, torch.linalg.inv(A), y)
+        assert torch.allclose((v_par**2 / S_par).sum(-1), quad, atol=1e-7)
+
+    # gradients flow through both scans
+    a = torch.sort(torch.randn(40, dtype=DT))[0].requires_grad_(True)
+    w = (torch.randn(40, dtype=DT) * 0.5).requires_grad_(True)
+    u = torch.zeros(40, dtype=DT, requires_grad=True)
+    S, v = kalman_stats(a, w, Fn.softplus(u) + 1e-6, torch.randn(2, 40, dtype=DT))
+    (torch.log(S).sum() + (v**2 / S).sum()).backward()
+    assert all(torch.isfinite(t.grad).all() for t in (a, w, u))
 
 
 def test_kernel_matvec_stable_for_long_chains():
