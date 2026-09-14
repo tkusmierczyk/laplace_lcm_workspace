@@ -27,6 +27,7 @@ EXPERIMENTS = [
     "experiments/exp10_ordering.py",       # learned vs fixed vs seriation ordering
     "experiments/exp10b_fragility.py",     # ordering fragility + recovery failure
     "experiments/exp11_realdata.py",       # real ordered-feature data (NIR, CO2)
+    "experiments/exp12_cost.py",           # cost/complexity vs KFAC; applicability
 ]
 
 # Diagnostics (print-only, no CSV): exp8_joint.py, ctrl_ordering.py,
