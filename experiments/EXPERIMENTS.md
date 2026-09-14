@@ -49,11 +49,21 @@ on the scalar-output GLMs where LCM wins, KFAC *is* full Laplace exactly (measur
 rel-Frobenius 1e-06) and offers no compression — so it was never a cheap baseline
 in that setting.
 
+**Complexity class (Exp 13) — the peer comparison, split verdict.** Against
+banded-Cholesky (`AAᵀ` → tridiagonal precision) and low-rank peers at equal budget:
+**in the niche LCM wins decisively** — `3d` parameters to low-rank's `17d` for the
+same fit, and +87% of the joint gap closed where every peer closes ≈0% or is
+actively harmful. **On NN weight curvature it loses** — `rank4` at `5d` beats LCM
+at `3d` and keeps improving, with no ordering fragility. Exp 13 also found that
+scale-normalising the fit raises the headline gap from 54% to 87% at `d=1000` on
+identical seeds, so the reported numbers are *conservative*.
+
 **Net.** LCM is the strongest diagonal-cost, architecture-agnostic structured
 covariance, with one demonstrated real advantage — **joint** predictive
 uncertainty for **known-1-D-ordered** features. It is not a replacement for KFAC
 on neural-network weights, and not a competitor to it either: the two encode
-different curvature geometries.
+different curvature geometries. Where it does win, it wins against its whole
+complexity class, not just against diagonal.
 
 ## Baselines
 
@@ -68,8 +78,9 @@ of the Hessian/posterior-precision approximation:
   it uses the `n×n` dual/Woodbury form, so it is exact at every `d`).
 * **LCM** — *ours*, the structured Gauss–Markov covariance (`3P` parameters).
 
-(Low-rank Laplace is omitted: it requires an unavailable legacy backend,
-`asdfghjkl`.)
+(The library's Low-rank Laplace is omitted: it requires an unavailable legacy
+backend, `asdfghjkl`. Exp 13 implements `D + V Vᵀ` directly instead, which turns
+out to matter — it is LCM's strongest same-class competitor.)
 
 ## Common protocol
 
@@ -108,6 +119,7 @@ worse than diagonal.
 | 10 / 10b | `exp10_ordering.py`, `exp10b_fragility.py` | Does the *learned* ordering work? How exact must it be? | **negative, central** |
 | 11 | `exp11_realdata.py` | Does it hold on real ordered data? | **positive (1 dataset)** |
 | 12 | `exp12_cost.py` | What do LCM and KFAC *cost*, and are they comparable? | **corrective** |
+| 13 | `exp13_sameclass.py` | Is LCM the best model in its own O(d) complexity class? | **split: yes in niche, no on NN** |
 
 Supporting diagnostics: `ctrl_ordering.py` (frozen-order control),
 `diag_matfree_init.py` (matrix-free fit initialization).
@@ -710,6 +722,131 @@ cheaper KFAC" but **"LCM covers a curvature geometry KFAC cannot express, at `3P
 memory"** — and the honest caveat is that it costs an optimization to build.
 
 ---
+
+## Experiment 13 — Is LCM the right model in its own complexity class?
+
+**Why.** Exp 12 established that LCM and KFAC are not substitutes. That leaves a
+sharper question unasked for the whole project: LCM was only ever compared against
+something *weaker* (diagonal, `d` params) or something *richer* (KFAC, Full). It
+was never compared against its **peers** — the other structured PSD families that
+also cost `O(d)` parameters. A reviewer goes straight here: *why this 3d
+parameterisation and not a banded Cholesky, or a low-rank correction?*
+
+**The competitors**, all fit to the same target with the same objective, the same
+Adam budget, and scale-normalisation (below):
+
+| family | form | params |
+|---|---|---|
+| `diag` | `D` | `d` |
+| `chol_band1` | `L Lᵀ`, `L` bidiagonal → **tridiagonal** precision | `2d−1` |
+| `chol_band2` | `L Lᵀ`, `L` 2 subdiagonals → pentadiagonal | `3d−3` |
+| `diag_rank1` | `D + v vᵀ` | `2d` |
+| `diag_rank2` | `D + V Vᵀ`, `V ∈ R^{d×2}` | `3d` |
+| **`lcm`** | `D + W K(a) W` | `3d` |
+
+`chol_band1` is the direct "`AAᵀ` that gives a tridiagonal matrix" comparison.
+
+**The distinction that makes this non-obvious.** A banded Cholesky produces a
+*sparse* precision. LCM produces a **dense** one: `K(a)` is the exponential kernel,
+which is the **inverse** of a tridiagonal matrix (semiseparable), not a tridiagonal
+matrix. The two families are close to opposites — sparse-with-support versus
+dense-with-decay — despite both being `O(d)` and both being describable as
+"chain-like". Which one fits a given curvature is therefore an empirical question,
+and the targets below are chosen so that each family has a home.
+
+### (a) Fit quality — every family has a home, and they are different homes
+
+Relative Frobenius error to the target (lower better), `d = 200`:
+
+| target | `diag` (1d) | `band1` (2d) | `band2` (3d) | `rank1` (2d) | `rank2` (3d) | **`lcm` (3d)** |
+|---|---|---|---|---|---|---|
+| `glm_ar1` — AR(1) GLM GGN (dense semiseparable) | 0.946 | 0.864 | 0.788 | 0.846 | 0.742 | **0.140** |
+| `glm_ar1_perm` — same, order hidden | 0.946 | 0.942 | 0.938 | 0.846 | 0.742 | **0.460** |
+| `tridiag` — genuinely sparse Markov precision | 0.480 | **0.001** | 0.008 | 0.475 | 0.470 | 0.465 |
+| `nn_ggn` — trained last-layer GGN (Kronecker) | 0.916 | 0.903 | 0.885 | 0.831 | 0.760 | **0.754** |
+
+Beyond LCM's budget, to price its structural advantage in parameters:
+
+| target | `rank4` (5d) | `rank8` (9d) | `rank16` (17d) | `band4` (5d) | **`lcm` (3d)** |
+|---|---|---|---|---|---|
+| `glm_ar1` | 0.571 | 0.343 | 0.147 | 0.651 | **0.140** |
+| `glm_ar1_perm` | 0.571 | 0.343 | 0.147 | 0.930 | 0.460 |
+| `tridiag` | 0.459 | 0.439 | 0.400 | 0.020 | 0.465 |
+| `nn_ggn` | **0.633** | **0.417** | **0.251** | 0.858 | 0.754 |
+
+**Three findings, and they do not all favour LCM.**
+
+1. **In its niche, LCM is dramatically parameter-efficient.** On `glm_ar1` it
+   reaches 0.140 with `3d` parameters; low-rank needs **`17d`** (rank-16, 0.147) to
+   match it. That is a ~5.7× parameter-efficiency advantage, and it is exactly what
+   the structure buys: the GGN of ordered correlated features is `XᵀX ≈ n·K(a)`,
+   which *is* LCM's form.
+2. **The banded Cholesky has its own home, and LCM cannot enter it.** On a
+   genuinely sparse tridiagonal precision `chol_band1` is exact (0.001, KL 0.000)
+   while LCM manages only 0.465 — barely better than diagonal. The two families are
+   complementary, not competing.
+3. **On real NN curvature, low-rank beats LCM per parameter.** LCM is narrowly best
+   *within* `3d` (0.754 vs 0.760), but `rank4` at `5d` already beats it (0.633) and
+   it keeps improving (`rank8` 0.418, `rank16` 0.251) while LCM has no comparable
+   knob. Low-rank is also **order-independent**, so it avoids the fragility of
+   Exp 10 entirely. For weight-space Laplace, low-rank is the better structured
+   family.
+
+### (b) Joint predictive LL — no same-class competitor closes the gap
+
+The metric that actually mattered (Exp 8c protocol, `d=1000`, 5 seeds, order known):
+
+| model | params | joint gap-to-full closed |
+|---|---|---|
+| `chol_band1` | 2d | **−65.3% ± 22.3** |
+| `chol_band2` | 3d | **−67.3% ± 56.0** |
+| `diag_rank1` | 2d | −4.0% ± 4.0 |
+| `diag_rank2` | 3d | −2.4% ± 5.1 |
+| **`lcm`** | 3d | **+86.9% ± 17.8** |
+
+This is the strongest result in the project's favour. In LCM's niche, on the
+decisive metric, **every same-class competitor closes essentially none of the
+diagonal→full gap, and the banded ones are actively harmful** — a banded Cholesky
+fit to a dense-decaying GGN produces a confidently wrong posterior, much as a
+wrongly-ordered LCM does (Exp 10). Only LCM closes the gap.
+
+### (c) A fitting deficiency, found in passing — the headline number was understated
+
+All Exp 13 fits **scale-normalise the target** (fit to `T/s`, multiply the result
+by `s`; every family here is positively homogeneous, so this is exact). It was
+added because low-rank diverged at GGN scale (~1e5) with Adam at `lr=5e-2` — the
+same class of bug as the original fit-init scaling error.
+
+It also changes LCM's headline result. Re-running the Exp 8c protocol with
+normalisation, on **identical data and identical seeds** (`joint_diag` and
+`joint_full` match to the last digit, so the LCM fit is the only variable):
+
+| seed | Exp 8c (`auto_init`) | Exp 13 (scale-normalised) |
+|---|---|---|
+| 0 | 42.6% | **75.2%** |
+| 1 | 22.0% | **69.2%** |
+| 2 | 46.8% | **75.5%** |
+| 3 | 101.2% | **118.3%** |
+| 4 | 57.6% | **96.4%** |
+| **mean** | **54.1%** | **86.9%** |
+
+Better on **every seed**. The library's `auto_init` (which rescales `w`/`d` from
+the target diagonal) does not fully solve the scale problem; normalising the target
+itself does. So **the reported 62%/52%/23% headline numbers are conservative** —
+they understate LCM for a fitting reason, not a modelling one. Exp 8c has not been
+re-run under normalisation; doing so is the single highest-value follow-up, and
+`LCMCovariance.fit_dense` should probably normalise internally.
+
+**Conclusion.** LCM survives the comparison against its own complexity class, but
+the verdict is split and worth stating precisely. *In its niche* it is not merely
+better than its peers, it is better by a margin no amount of low-rank or banding
+reaches at comparable cost — the `3d ≈ 17d` result and the +87%/−65% joint-LL
+split are the clearest evidence in the project that the structure is doing real
+work. *Outside* its niche, on neural-network weight curvature, low-rank dominates
+it per parameter and carries no ordering fragility, which is a further argument —
+independent of Exp 4a and the audit — against pursuing weight-space Laplace.
+
+---
 ---
 
 ## Implementation notes affecting these results
@@ -768,7 +905,13 @@ scaling table above predates both and is marked accordingly.
 5. **Mechanism (explanatory).** A single 1-D Markov chain cannot embed generic
    NN-weight curvature (Exp 4a plateau at 0.66) because layer curvature is
    Kronecker, not chain. Per-layer blocking recovers only 12–22% of that (Exp 6).
-6. **The learned coordinate does no useful work (negative, central).** It cannot
+6. **LCM beats its own complexity class — in its niche only (Exp 13).** Against
+   banded-Cholesky (`AAᵀ`, tridiagonal precision) and low-rank peers at equal
+   budget: in the ordered-feature niche LCM needs `3d` where low-rank needs `17d`,
+   and closes +87% of the joint gap where every peer closes ≈0% or worse. On real
+   NN curvature the verdict reverses — `rank4` at `5d` beats LCM at `3d`, with no
+   ordering fragility.
+7. **The learned coordinate does no useful work (negative, central).** It cannot
    discover a latent order (recovery 0.028, Exp 10), the tolerance is
    \|Spearman\| ≥ 0.999 (Exp 10b), and it is inactive when the order is known
    (Exp 11). With an unknown order it is *worse than doing nothing* (−84% vs 0%).
@@ -806,12 +949,96 @@ expect the learned ordering to find structure you cannot already name.
 
 ---
 
+## Open directions (proposed, not yet run)
+
+Four directions raised after Exp 13. **Nothing below has been measured** — each is
+a hypothesis with a stated rationale and a pre-registered prediction, so that
+running it can confirm *or* refute rather than rationalise. Ordered by expected
+value.
+
+### D1. Re-run the headline under scale-normalised fitting — **do this first**
+Exp 13(c) showed the reported gap-closed numbers are understated by a fitting
+deficiency: 54% → 87% at `d=1000` on identical seeds. Exp 8c (10 seeds, 3 values of
+`d`) should be re-run with the normalisation, and `LCMCovariance.fit_dense` should
+normalise internally so every downstream user gets it.
+*What it gives:* the project's central claim, correctly stated. It may also change
+the `d`-dependence — the 62%/52%/23% decay with `d` could partly be the fit
+degrading rather than the method degrading, which would materially alter the
+"shrinks with `d`" caveat that currently limits the paper.
+
+### D2. Are we beating low-rank? (partly answered — and the answer is *conditional*)
+Exp 13(a) already settles this, and the split matters:
+- **In the ordered-feature niche: yes, decisively.** LCM needs `3d` where low-rank
+  needs `17d`, and on joint LL it is +87% against low-rank's −2%.
+- **On NN weight curvature: no.** `rank4` at `5d` beats LCM at `3d`, and rank
+  8/16 pull further ahead, with no ordering fragility.
+
+*Consequence, and it is the one the question anticipated:* since LCM does **not**
+beat low-rank on weight curvature, scaling that setting up is not worth it. This
+now agrees with `AUDIT.md` §4 (the Kronecker-chain gap widens with size) from a
+second, independent direction. What remains open is a rank *sweep in the niche* —
+where does low-rank cross LCM as `ρ → 1`, and does a **hybrid** `D + W K(a) W +
+V Vᵀ` beat either? The hybrid is the interesting object: it could let the chain
+carry the local decay while a few dense directions absorb what the chain cannot,
+which is precisely the `nn_ggn` failure mode.
+
+### D3. Could learning the rank help LCM's ordering problem?
+*Rationale:* the ordering failure (Exp 10, recovery 0.028) is a discrete search
+that gradients cannot perform. A low-rank term is order-**independent**, so a
+hybrid model could absorb the long-range structure that a mis-ordered chain
+currently tries — and fails — to represent, potentially removing the catastrophic
+−84% collapse and leaving graceful degradation.
+*Prediction:* it will not *fix* ordering recovery (nothing in the parameterisation
+makes the permutation search easier) but it should convert the failure mode from
+"confidently wrong" to "falls back to low-rank", which is the difference between
+−84% and ≈0%. That alone would make LCM safe to use without knowing the order.
+*What it gives:* if confirmed, the method becomes deployable without the
+`|Spearman| ≥ 0.999` precondition that currently blocks every real application.
+
+### D4. Annealing the nugget to make the ordering learnable
+*Rationale:* the loss surface over `a` is non-convex because a small diagonal
+nugget `d` makes the kernel term dominate, so the fit is sensitive to every
+pairwise distance at once. Starting with a **large** diagonal (the model is then
+nearly diagonal, and the objective in `a` is nearly flat but well-conditioned) and
+annealing it **down** is graduated non-convexity / a homotopy continuation — the
+standard remedy for exactly this class of problem, and the same idea as
+deterministic annealing in clustering.
+*Prediction:* worth testing, but temper expectations. Exp 10b's fragility threshold
+(`|Spearman| ≥ 0.999`, with 0.998 already failing) means annealing must deliver a
+*near-exact* permutation, not merely a better one — and the coarse-to-fine schedule
+is most natural at recovering coarse structure first. Spectral seriation already
+reaches 0.99 on a good seed and is still insufficient. So the realistic upside is
+"better than 0.028 but still under threshold", which would be scientifically
+interesting and practically useless.
+*What it gives:* cheap to run (a schedule on one existing hyper-parameter, no new
+model) and it closes out the ordering question either way. If it *did* clear 0.999
+it would be the single most valuable result in the project, since it would unlock
+the unknown-order case that every negative result traces back to.
+
+### D5. Very wide layers (10⁴+ units) — is there a regime where LCM is the only option?
+*Rationale:* Exp 12 measured KFAC storage at `in² + out²`. At `in = 10⁴` that is
+`10⁸` floats (0.4–0.8 GB per layer) while LCM needs `3P`. There is therefore a
+width at which KFAC becomes infeasible and LCM does not — and modern architectures
+(MLP blocks in transformers, wide classifier heads, embedding layers) live there.
+*Prediction, stated honestly:* this is a **memory-feasibility** argument, not a
+quality argument, and Exp 13 has weakened it — at those widths low-rank is also
+`O(kd)`, order-independent, and fits real NN curvature *better* than LCM. So the
+likely finding is "LCM is feasible where KFAC is not, but low-rank is feasible
+there too and better". The experiment worth running is therefore three-way
+(LCM vs low-rank vs KFAC-where-it-fits) at increasing width, and the question it
+answers is whether LCM has *any* uncontested regime in weight space. Based on
+Exp 13(a) the honest expectation is that it does not, and that the niche remains
+ordered *features*, not wide *layers*.
+
+---
+
 ## Reproduction
 
 ```bash
 python experiments/run_all.py          # all 15 experiments, writes results/*.csv
 python experiments/exp8c_joint_ci.py   # the headline joint-UQ result (10 seeds)
 python experiments/exp12_cost.py       # cost/complexity vs KFAC
+python experiments/exp13_sameclass.py  # vs banded-Cholesky / low-rank peers
 pytest Laplace/tests/test_lcm.py -q    # 16 tests: fast paths vs dense references
 ```
 

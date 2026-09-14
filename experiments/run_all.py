@@ -28,6 +28,7 @@ EXPERIMENTS = [
     "experiments/exp10b_fragility.py",     # ordering fragility + recovery failure
     "experiments/exp11_realdata.py",       # real ordered-feature data (NIR, CO2)
     "experiments/exp12_cost.py",           # cost/complexity vs KFAC; applicability
+    "experiments/exp13_sameclass.py",      # vs banded-Cholesky / low-rank peers
 ]
 
 # Diagnostics (print-only, no CSV): exp8_joint.py, ctrl_ordering.py,
