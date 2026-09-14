@@ -62,13 +62,14 @@ vectors) fitting routine.
 | `laplace/baselaplace.py` | **new** `LCMLaplace(FullLaplace)` with fast Kalman log-det |
 | `laplace/lllaplace.py` | **new** `LCMLLLaplace(LLLaplace, LCMLaplace)` |
 | `laplace/__init__.py` | export `LCMLaplace`, `LCMLLLaplace`, `LCMCovariance` |
-| `tests/test_lcm.py` | **new** — 12 unit + integration tests |
+| `tests/test_lcm.py` | **new** — 16 unit + integration tests |
 | `examples/lcm_example.py` | **new** — runnable demo |
+| `laplace/LCM_PROVENANCE.md` | **new** — line-by-line map to the authors' reference `lcm.py` |
 
 ## Tests & demo
 
 ```
-pytest tests/test_lcm.py -q        # 12 passed
+pytest tests/test_lcm.py -q        # 16 passed
 python examples/lcm_example.py     # LCM ~4x closer to full posterior than diagonal
 ```
 
@@ -89,7 +90,33 @@ diagonal.
   the natural next step.
 * A single 1-D ordering of all parameters is the model's main assumption; for real
   network GGNs it captures only what a single Gauss-Markov chain can (see
-  `lcm_fit_error_`). A per-layer chain (KFAC-style blocks) is the natural extension.
-* The near-linear Kalman log-det here is a sequential O(P) scan; the paper's
-  associative 2×2-matrix scan gives the same result at O(P log P) *depth* (removing
-  the Python-loop overhead) and can replace it directly.
+  `lcm_fit_error_`, which plateaus at ~0.66 rel-Frobenius). A per-layer chain
+  (KFAC-style blocks) was evaluated and helps by only 12-22% in KL — still far
+  short of KFAC — because the residual gap is *within*-layer Kronecker structure
+  that blocking does not address. See `../experiments/EXPERIMENTS.md` Exp 6.
+* The **learned** coordinate cannot discover an unknown ordering (recovery
+  |Spearman| ~ 0.03) and the kernel needs |Spearman| >= 0.999 to beat diagonal.
+  Learning it from an uninformed init on an unknown order is *worse* than diagonal
+  (it overfits into a confidently wrong chain), whereas a fixed wrong order
+  degrades gracefully to diagonal. See `../experiments/EXPERIMENTS.md` Exp 10/10b.
+
+  There is no `learn_a` flag: `a` is an `nn.Parameter` and is always optimised by
+  `fit_dense` / `fit_frobenius`. To pin a **known** order, set it and freeze it
+  before fitting:
+
+  ```python
+  with torch.no_grad():
+      lcm.a.copy_(known_order_coordinate)   # e.g. wavelength index, time lag
+  lcm.a.requires_grad_(False)
+  lcm.fit_dense(H)                          # now fits only w and d
+  ```
+* ~~The near-linear Kalman log-det here is a sequential O(P) scan~~ — **done.**
+  The paper's associative 2x2-matrix scan is now the default (`logdet_parallel`),
+  15-64x faster than the sequential version; the mean recursion was subsequently
+  ported to a second scan as well (16x at d=2000, 48x at d=10000 on `quad_inv` /
+  `nll`). The sequential filter survives only as `kalman_stats_sequential`, an
+  independent reference the tests validate against.
+* **Known weakness:** wall-clock for the *fit* scales ~`O(d^1.44)`, not
+  `O(d log d)`, because the blocked `kernel_matvec` runs `range/60` sequential
+  blocks and the coordinate range grows with `d`. The asymptotic work is `O(d)`;
+  an associative-scan block carry would recover the intended asymptotics.
