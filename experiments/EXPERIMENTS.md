@@ -179,7 +179,9 @@ afterwards:
 | 2 | `Linear(d,50)–Tanh–Linear(50,1)` | 6 UCI sets (california, concrete, diabetes, energy, wine, yacht) via sklearn/OpenML; inputs **and** targets standardised on train; 8 random 90/10 splits | Adam, lr `1e-2`, wd `1e-4` | 120 | 128 |
 | 3 | `Conv(1,16)–ReLU–MaxPool–Conv(16,32)–ReLU–MaxPool–Flatten–Linear(1568,84)–ReLU–Linear(84,10)` | MNIST (in) vs FashionMNIST (OOD), 4 000 test / 4 000 OOD, GGN over the first 8 000 train points | Adam, lr `1e-3`, wd `5e-4` | 5 | 256 |
 | 3b, 5 | 3-block Conv+BatchNorm+ReLU CNN → `Flatten–Linear(2048,128)–ReLU–Linear(128,10)` | CIFAR-10 (in) vs SVHN (OOD), GGN over the first 10 000 train points | Adam, lr `1e-3`, wd `5e-4`, **cosine-annealed** | 15 | 256 |
-| 4 | `Linear(d,40)–Tanh–Linear(40,30)–Tanh–Linear(30,k)` | synthetic | Adam, lr `5e-3`, wd `1e-3` | — | — |
+| 4 / 4b | `Linear(d,40)–Tanh–Linear(40,30)–Tanh–Linear(30,k)` | synthetic AR(1); 4b instead fits a *controlled* scrambled-AR(1) target matrix and trains no network | Adam, lr `5e-3`, wd `1e-3` | — | — |
+| 12b | `Linear(40,84)–Tanh–Linear(84,10)` | synthetic, `N = 3 000`, labels `argmax(XW + 0.5ε)`; MAP reaches 100% train accuracy | Adam, lr `1e-2`, **full-batch**, 400 steps | — | full |
+| 12a / 12c | single `Linear(in,out)` (12a) or `Linear(d,1,bias=False)` (12c) | random `N=256` (12a) / `N ∈ {400,600,900}` for `d ∈ {100,200,400}` (12c) | **not trained** — 12a measures storage, which depends only on shapes; 12c measures the KFAC-vs-Full identity, which holds at any parameter value | — | 64 / 100 |
 
 **Posterior construction** (`common.fit_laplace`). One code path for every
 structure, so the comparison is like-for-like:
@@ -221,6 +223,21 @@ coordinate. Targets are `y = Xβ + σε` with a fixed smooth
 **Posterior.** `GGN = XᵀX/σ²`; `Σ = (GGN + λI)⁻¹`; posterior mean
 `Σ Xᵀy/σ²`. For Exp 7's large-`d` rows the exact `full` reference uses the `n×n`
 dual/Woodbury form, so it stays exact at every `d`. Everything is float64.
+
+**Two regime-B experiments train a network** (to obtain a realistic curvature
+target, then treat its last layer as a GLM):
+
+* **Exp 13, `nn_ggn` target.** `Linear(20,H)–Tanh–Linear(H,C)` with `C` the first of
+  `(5,4,6,8,10,2)` dividing `d` and `H = d/C`, so the GGN is exactly `d×d` and
+  comparable to the other three targets. `N = 600` synthetic samples, Adam lr `1e-2`,
+  300 steps, cross-entropy. The exact last-layer GGN is then assembled as
+  `mean_i Λ_i ⊗ φ_i φ_iᵀ` with `Λ_i = diag(p_i) − p_i p_iᵀ` (vectorised; verified
+  against the explicit Kronecker sum to 5.5e-17).
+* **Exp 14(c).** `Linear(20,60)–Tanh–Linear(60,1)` regression on
+  `y = 2·sin(Xw) + 0.3ε`, `N = 2 500` train / 300 test, Adam lr `1e-2`, 500 steps,
+  MSE. Observation noise is set to the **empirical residual sd** of the trained
+  network, not tuned. The last-layer features `Φ = tanh(W₁x)` then play the role of
+  `X`, so `GGN = ΦᵀΦ/σ²` and a last-layer Laplace is exactly the regime-B GLM.
 
 **Per-experiment regime-B settings.**
 
@@ -272,7 +289,13 @@ overridden. Fitting minimises `‖A − T‖_F²/‖T‖_F²` with Adam and `aut
 | 8c | 700 | 5e-2 | `arange(d)·(−log ρ)` = true order | ✘ |
 | 9 | 700 | 5e-2 | default | ✘ |
 | 10, 10b, 11 | 700–800 | 5e-2 | uninformed / seriation / natural | ✘ |
-| **13, 14, 15, 16** | 600–800 | 5e-2 | varies by arm | **✔ `T/s`, rescaled after** |
+| **13a** | 800 | 5e-2 | true order on `glm_ar1`, else library default | **✔** |
+| **13b** | 700 | 5e-2 | `arange(d)·(−log ρ)` = true order | **✔** |
+| **14a / 14b** | 600 | 5e-2 | `ρ`-matched true order | **✔** |
+| **14c** | 600 | 5e-2 | library default (no meaningful order) | **✔** |
+| **15 (D2)** | 600 | 5e-2 | uninformed (order is hidden) | **✔** |
+| **15 (D4)** | 1 020 total | 5e-2 | uninformed / seriation / oracle, per arm | **✔** |
+| **16a / 16b** | 800 / 700 | 5e-2 | per arm (see the Exp 16 table) | **✔ and ✘ side by side** |
 
 **The normalisation column is the single most important row-to-row difference in
 this table.** Fitting `T/s` and multiplying the result by `s` is exact (the family
@@ -284,10 +307,29 @@ experiment with ✘ in that column is conservative by an unknown margin.**
 ### Baseline implementations in regime B
 
 `diag` is `diag(1/(diag(GGN)+λ))` — the exact diagonal Laplace, not a fitted
-approximation. `full` is the exact inverse. The Exp 13/14 competitors
-(`chol_band*`, `diag_rank*`, the hybrid) are fitted with the *same* Adam objective,
-step count and normalisation as LCM, and are initialised from the target diagonal,
-so no family is advantaged by its initialisation.
+approximation. `full` is the exact inverse (or the `n×n` dual form at large `d`).
+
+**Competitor families (Exp 13–15)** are all fitted by the *same* routine as LCM —
+Adam on `‖M − T‖_F²/‖T‖_F²`, same step count, same lr, same scale-normalisation —
+and all are initialised from the target diagonal, so no family is advantaged by its
+initialisation:
+
+* `chol_band(b)`: `M = L Lᵀ`, `L` lower-banded with `b` subdiagonals, diagonal via
+  `softplus`; `d + b·d − b(b+1)/2` parameters (`b=1` → **tridiagonal** precision).
+* `diag_rank(k)`: `M = softplus(u) + V Vᵀ`, `V ∈ R^{d×k}`; `(k+1)·d` parameters,
+  `V` initialised at `√(0.1·mean(diag T)/k)·N(0,1)`.
+* `hybrid_k` (Exp 15): `M = D + W K(a) W + V Vᵀ`, `(3+k)·d` parameters, with the LCM
+  part initialised at a 0.6/0.3 `w`/nugget split of the target diagonal.
+
+**Annealing schedules (Exp 15 D4)**, all given the same 1 020-step total budget as
+the `plain` baseline:
+
+| variant | schedule |
+|---|---|
+| `anneal-hard` | nugget fraction `φ ∈ (0.9, 0.7, 0.5, 0.3, 0.15, 0.05)`, 120 steps each with `w` and `u` **frozen** (only `a` trained), then 300 steps with everything unfrozen |
+| `anneal-soft` | `φ ∈ (0.9, 0.6, 0.3, 0.1)`, 170 steps each, schedule used only to **re-initialise** the split — all parameters trainable throughout |
+| `restarts` | 3 random restarts × 340 steps, best kept (the equal-compute control) |
+| `seriation` | Fiedler-vector seriation of the `|correlation|` graph Laplacian as `a`-init, then a normal fit |
 
 ### Reported statistics
 
