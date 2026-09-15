@@ -1,5 +1,29 @@
 # Publication assessment: is there a paper in the LCM work?
 
+
+> ## ⚠ CORRECTION (Exp 16) — read before the ordering sections
+>
+> The **unnormalised Frobenius fit**, not the model, produced this project's central
+> ordering negatives. Scale-normalising the fit target (`T/s`, rescale after — exact,
+> since the LCM family is positively homogeneous) changes the verdicts on *identical
+> data and seeds*:
+>
+> | claim | as reported here | corrected (Exp 16) |
+> |---|---|---|
+> | learned coordinate, unknown order | −84% (worse than diagonal) | **+10.2% ± 6.9** |
+> | spectral seriation, unknown order | −79% | **+65.4% ± 19.7** (as *init + refine*, not frozen) |
+> | headline joint gap, d=1000 | 52% | **87%** (identical seeds) |
+>
+> Order *recovery* numbers are unchanged (0.028 learned, ~0.79 seriation) — only the
+> fit was broken. **"LCM requires a known 1-D order" is therefore withdrawn**; what
+> stands is the narrower "gradient descent alone cannot *discover* one". The
+> \|Spearman\| ≥ 0.999 threshold is also unreliable: it saturates at 4 d.p. across a
+> 33-point swing in outcome. See `experiments/EXPERIMENTS.md` Exp 16.
+>
+> Everything below produced by an unnormalised fit is **conservative by an unknown
+> margin** and has not yet been re-run.
+
+
 Review of everything executed in this project (library fork, 13 unit/integration
 tests, experiments 1–9 + controlled ablations + scaling benchmarks), checked
 against the literature. Written 2026-07-16.

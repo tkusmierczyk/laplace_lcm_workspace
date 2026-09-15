@@ -8,21 +8,59 @@ and whether that use is strong enough to publish. It records what was done, why
 each choice was made, what the results were, the design decisions and their
 impact, and the limitations/issues encountered (including bugs found and fixed).
 
-**Bottom line.** LCM is a correct, cheap, near-linear structured Gaussian. Its one
-genuine advantage over diagonal Laplace is in **joint** (not marginal) predictive
-uncertainty, and only in a narrow regime: the variables must have a **known**
-1-D ordering with decaying correlation, and the problem must be well-enough
-determined that a joint-covariance gap exists (n ≳ d). Its headline novelty over
-existing methods — the **learned** 1-D coordinate — does not survive scrutiny:
-gradient descent cannot discover an unknown ordering, and the kernel is so fragile
-to ordering error that partial recovery is worse than doing nothing. On real
-known-order data (NIR spectroscopy) it recovers essentially all of full Laplace's
-joint-UQ advantage over diagonal at 3·d parameters, but there it is equivalent to
-a classical banded / state-space-GP precision. Recommended outcome: a focused
-**workshop → TMLR** paper framed honestly as a characterization + systems
-contribution, not a new SOTA method. Full verdict in `PUBLICATION_ASSESSMENT.md`.
+**Bottom line** *(revised after Exp 16 — see the correction below)*. LCM is a
+correct, cheap, near-linear structured Gaussian. Its one genuine advantage over
+diagonal Laplace is in **joint** (not marginal) predictive uncertainty, in a
+regime where the variables have a 1-D ordering with decaying correlation and the
+problem is well-enough determined that a joint-covariance gap exists (`n ≳ d`).
+
+Its headline novelty — the **learned** 1-D coordinate — still does not survive:
+gradient descent from an uninformed init cannot discover an unknown ordering
+(recovery 0.028). **But the stronger negative originally reported here — that the
+method is unusable without a *known* order — was a fitting artifact and is
+withdrawn.** With a scale-normalised fit and a spectral-seriation initialisation
+that is then refined, LCM closes **65%** of the diagonal→full joint gap on data
+whose ordering is entirely hidden, against an oracle-order ceiling of 90%.
+
+Two further results sharpen the case. Against its own `O(d)` complexity class
+(banded Cholesky, low-rank) LCM wins decisively *in its niche* — and for the right
+reason: a low-rank model can match its Frobenius fit to the precision and still
+close only a third as much predictive gap, because the posterior covariance here is
+near-banded (Exp 14b). On **neural-network** weight curvature the verdict reverses:
+low-rank beats LCM per parameter and carries no ordering fragility, which is an
+independent argument against weight-space Laplace.
+
+On real known-order data (NIR spectroscopy) LCM recovers essentially all of full
+Laplace's joint-UQ advantage at `3d` parameters, though there it is equivalent to a
+classical banded / state-space-GP precision. Recommended outcome: a focused
+**workshop → TMLR** paper. The framing should now be revisited upward — the
+"requires a known order" limitation that motivated the characterisation-only
+framing no longer holds. Full verdict in `PUBLICATION_ASSESSMENT.md`, which also
+predates the correction.
 
 ---
+
+> ## ⚠ CORRECTION (Exp 16) — read before the ordering sections
+>
+> The **unnormalised Frobenius fit**, not the model, produced this project's central
+> ordering negatives. Scale-normalising the fit target (`T/s`, rescale after — exact,
+> since the LCM family is positively homogeneous) changes the verdicts on *identical
+> data and seeds*:
+>
+> | claim | as reported here | corrected (Exp 16) |
+> |---|---|---|
+> | learned coordinate, unknown order | −84% (worse than diagonal) | **+10.2% ± 6.9** |
+> | spectral seriation, unknown order | −79% | **+65.4% ± 19.7** (as *init + refine*, not frozen) |
+> | headline joint gap, d=1000 | 52% | **87%** (identical seeds) |
+>
+> Order *recovery* numbers are unchanged (0.028 learned, ~0.79 seriation) — only the
+> fit was broken. **"LCM requires a known 1-D order" is therefore withdrawn**; what
+> stands is the narrower "gradient descent alone cannot *discover* one". The
+> \|Spearman\| ≥ 0.999 threshold is also unreliable: it saturates at 4 d.p. across a
+> 33-point swing in outcome. See `experiments/EXPERIMENTS.md` Exp 16.
+>
+> Everything below produced by an unnormalised fit is **conservative by an unknown
+> margin** and has not yet been re-run.
 
 ## 1. High-level overview (the arc)
 

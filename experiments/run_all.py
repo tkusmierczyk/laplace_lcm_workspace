@@ -29,6 +29,9 @@ EXPERIMENTS = [
     "experiments/exp11_realdata.py",       # real ordered-feature data (NIR, CO2)
     "experiments/exp12_cost.py",           # cost/complexity vs KFAC; applicability
     "experiments/exp13_sameclass.py",      # vs banded-Cholesky / low-rank peers
+    "experiments/exp14_lowrank.py",        # low-rank depth + large-d feasibility
+    "experiments/exp15_ordering_fixes.py", # hybrid + annealing (annealing fails)
+    "experiments/exp16_normalisation.py",  # corrects the Exp 10/10b negatives
 ]
 
 # Diagnostics (print-only, no CSV): exp8_joint.py, ctrl_ordering.py,
