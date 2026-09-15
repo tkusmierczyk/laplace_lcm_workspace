@@ -5,6 +5,8 @@ from __future__ import annotations
 import warnings
 
 import pytest
+import math
+
 import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
@@ -324,3 +326,54 @@ def test_lcmlllaplace_classification_pipeline():
     ev_emp = torch.linalg.eigvalsh(torch.cov(lcm.sample(200000).T)).sort()[0]
     ev_post = torch.linalg.eigvalsh(lcm.posterior_covariance).sort()[0]
     assert (ev_emp - ev_post).norm() / ev_post.norm() < 0.03
+
+
+def test_fit_is_scale_equivariant_and_normalisation_helps():
+    """The LCM family is positively homogeneous: A*(c T) = c A*(T). So fitting the
+    same target at two very different scales must give the same *relative* error,
+    and the fitted matrix must carry the target's scale.
+
+    This is a regression test for a real defect: the fit objective is an
+    unnormalised sum of squares while Adam takes steps of absolute size ``lr``, so
+    on a GGN-scale target ``auto_init`` put ``w`` at ~300 and each step moved it by
+    ~2e-4 relative -- the fit barely left its initialisation. Normalising the target
+    internally (and rescaling after) fixes it exactly. Unnormalised fitting is what
+    made experiment results differ from the library's own LCMLaplace.
+    """
+    torch.manual_seed(0)
+    d, n, rho = 120, 600, 0.9
+    e = torch.randn(n, d, dtype=torch.float64)
+    X = torch.empty(n, d, dtype=torch.float64)
+    X[:, 0] = e[:, 0]
+    for j in range(1, d):
+        X[:, j] = rho * X[:, j - 1] + (1 - rho**2) ** 0.5 * e[:, j]
+    base = X.T @ X / n
+    a0 = torch.arange(d, dtype=torch.float64) * -math.log(rho)
+
+    def fit(target, normalize):
+        torch.manual_seed(1)
+        m = LCMCovariance(d, dtype=torch.float64)
+        with torch.no_grad():
+            m.a.copy_(a0)
+        err = m.fit_dense(target, n_steps=400, lr=5e-2, normalize=normalize)
+        return m, err
+
+    # equivariance: same relative error at 1x and 10000x, and the scale is carried
+    m1, e1 = fit(base, True)
+    m2, e2 = fit(base * 1e4, True)
+    assert abs(e1 - e2) < 1e-6, f"not scale-equivariant: {e1} vs {e2}"
+    ratio = float(m2.dense().diagonal().mean() / m1.dense().diagonal().mean())
+    assert abs(ratio - 1e4) / 1e4 < 1e-6, f"scale not carried: {ratio}"
+
+    # and normalising is what buys it: unnormalised degrades at large scale
+    _, e_un = fit(base * 1e4, False)
+    assert e2 < e_un, f"normalised fit ({e2}) should beat unnormalised ({e_un})"
+
+    # fit_frobenius agrees with fit_dense on the same implied target
+    torch.manual_seed(1)
+    mf = LCMCovariance(d, dtype=torch.float64)
+    with torch.no_grad():
+        mf.a.copy_(a0)
+    mf.fit_frobenius(X, n_steps=400, lr=5e-2)
+    rel_f = float((mf.dense() - base).norm() / base.norm())
+    assert rel_f < e1 + 0.05, f"matrix-free fit {rel_f} far from dense fit {e1}"

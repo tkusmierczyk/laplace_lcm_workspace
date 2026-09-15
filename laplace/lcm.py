@@ -487,6 +487,7 @@ class LCMCovariance(nn.Module):
         tol: float = 1e-9,
         verbose: bool = False,
         auto_init: bool = True,
+        normalize: bool = True,
     ) -> float:
         """Fit ``(a, w, u)`` to a dense PSD target by minimising ``||A - target||_F^2``.
 
@@ -496,6 +497,15 @@ class LCMCovariance(nn.Module):
             Rescale ``w``/``d`` from ``target``'s diagonal before optimizing (see
             :meth:`_auto_init_scale`). Strongly recommended; disable only to
             reproduce a specific hand-set initialization.
+        normalize : bool, default=True
+            Fit to ``target / s`` (with ``s`` the mean diagonal) and rescale the
+            parameters afterwards. This is **exact** -- the family is positively
+            homogeneous, so ``A*(c T) = c A*(T)`` -- and it matters a great deal.
+            Adam takes steps of absolute size ``lr``; on a GGN-scale target
+            (~1e5) ``auto_init`` puts ``w`` at ~300, so one step moves it by
+            ~2e-4 relative and the fit barely leaves its initialization. Fitting
+            at unit scale puts every parameter near 1, where ``lr`` is matched.
+            Disable only to reproduce pre-fix behaviour.
 
         Returns
         -------
@@ -503,14 +513,19 @@ class LCMCovariance(nn.Module):
             Final relative Frobenius error ``||A - target||_F / ||target||_F``.
         """
         target = target.to(self.a.dtype)
+        scale = (
+            target.diagonal().mean().clamp(min=1e-30)
+            if normalize
+            else torch.ones((), dtype=target.dtype, device=target.device)
+        )
+        tgt = target / scale
         if auto_init:
-            self._auto_init_scale(target.diagonal())
+            self._auto_init_scale(tgt.diagonal())
         opt = torch.optim.Adam([self.a, self.w, self.u_raw], lr=lr)
-        target_norm = target.norm().clamp(min=1e-12)
         prev = None
         for step in range(n_steps):
             opt.zero_grad()
-            loss = ((self.dense() - target) ** 2).sum()
+            loss = ((self.dense() - tgt) ** 2).sum()
             loss.backward()
             opt.step()
             if verbose and step % max(1, n_steps // 10) == 0:
@@ -518,9 +533,24 @@ class LCMCovariance(nn.Module):
             if prev is not None and abs(prev - loss.item()) < tol * (prev + 1e-12):
                 break
             prev = loss.item()
+        self._rescale_(scale)
         with torch.no_grad():
-            rel = (self.dense() - target).norm() / target_norm
+            rel = (self.dense() - target).norm() / target.norm().clamp(min=1e-12)
         return rel.item()
+
+    @torch.no_grad()
+    def _rescale_(self, scale: torch.Tensor) -> None:
+        """In-place ``A <- scale * A``, exploiting positive homogeneity.
+
+        ``A = diag(d) + diag(w) K(a) diag(w)``, so scaling ``A`` by ``s`` means
+        ``w <- sqrt(s) w`` and ``d <- s d``; the coordinates ``a`` are unchanged
+        because the kernel is scale-free. Used to undo the fit-time normalization.
+        """
+        if float(scale) == 1.0:
+            return
+        self.w.mul_(scale.sqrt())
+        d_new = scale * (F.softplus(self.u_raw) + self.eps) - self.eps
+        self.u_raw.copy_(_inverse_softplus(d_new.clamp(min=1e-12)))
 
     def fit_frobenius(
         self,
@@ -530,6 +560,7 @@ class LCMCovariance(nn.Module):
         batch_size: int | None = None,
         verbose: bool = False,
         auto_init: bool = True,
+        normalize: bool = True,
     ) -> float:
         """Matrix-free fit to the empirical second moment of ``vectors``.
 
@@ -558,6 +589,15 @@ class LCMCovariance(nn.Module):
         """
         vectors = vectors.to(self.a.dtype)
         N = vectors.shape[0]
+        # Scale-normalise exactly as fit_dense does. S_hat = (1/N) sum v v^T, so
+        # dividing the vectors by sqrt(s) divides S_hat by s; _rescale_ undoes it
+        # afterwards. See fit_dense's `normalize` docstring for why it matters.
+        scale = (
+            (vectors**2).mean().clamp(min=1e-30)
+            if normalize
+            else torch.ones((), dtype=vectors.dtype, device=vectors.device)
+        )
+        vectors = vectors / scale.sqrt()
         if auto_init:
             self._auto_init_scale((vectors**2).mean(dim=0))
         opt = torch.optim.Adam([self.a, self.w, self.u_raw], lr=lr)
@@ -589,7 +629,10 @@ class LCMCovariance(nn.Module):
             last = loss.item()
             if verbose and step % max(1, n_steps // 10) == 0:
                 print(f"  [fit_frobenius] step {step:4d}  loss {last:.6e}")
-        return last
+        self._rescale_(scale)
+        # the objective was evaluated on the rescaled vectors, so report it on the
+        # caller's scale: ||A - S||_F^2 is homogeneous of degree 2 in the scale.
+        return last * float(scale) ** 2
 
     # ------------------------------------------------------------------ export
     def scaled_params(self, h_factor, prior_diag: torch.Tensor):

@@ -304,6 +304,17 @@ is positively homogeneous), but the unnormalised fit misbehaves at GGN scale
 54% → 87% on the headline, and from −94.5% → +10.2% on the ordering result. **Every
 experiment with ✘ in that column is conservative by an unknown margin.**
 
+*Root cause, and the fix.* The fit objective is an **unnormalised** sum of squares
+while Adam takes steps of absolute size `lr`. On a GGN-scale target `auto_init`
+sets `w ≈ 300`, so one step of `lr = 5e-2` moves it by ~2e-4 relative and the fit
+barely leaves its initialisation. `LCMCovariance.fit_dense` and `fit_frobenius` now
+**normalise internally** (`normalize=True` by default) and rescale the parameters
+afterwards via positive homogeneity — so the library path and the regime-B path now
+compute the same thing. Pass `normalize=False` to reproduce pre-fix behaviour.
+`tests/test_lcm.py::test_fit_is_scale_equivariant_and_normalisation_helps` pins it.
+**Consequence:** the ✘ rows above describe how those experiments *were run*; re-run
+today they would use the corrected fit.
+
 ### Baseline implementations in regime B
 
 `diag` is `diag(1/(diag(GGN)+λ))` — the exact diagonal Laplace, not a fitted
