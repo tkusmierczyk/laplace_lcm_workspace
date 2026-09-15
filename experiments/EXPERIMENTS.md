@@ -142,6 +142,163 @@ Supporting diagnostics: `ctrl_ordering.py` (frozen-order control),
 ---
 ---
 
+## Experimental setup (how everything was actually run)
+
+### Two regimes — and they differ in a way that matters
+
+The campaign has **two distinct experimental protocols**, and which one an
+experiment uses determines what its numbers mean.
+
+| regime | experiments | posterior obtained by |
+|---|---|---|
+| **A — library** | 1, 2, 3, 3b, 4, 5, 6, 12 | `laplace-torch` `Laplace(...)` object: `.fit()` accumulates the GGN through the library's backend, hyper-parameters tuned by the library's `log_marginal_likelihood`, predictions through `la(X, pred_type="glm")` |
+| **B — analytic GLM** | 7, 8/8b/8c, 9, 10/10b, 11, 13, 14, 15, 16 | **no library posterior.** The GGN is formed in closed form as `XᵀΛX` (Gaussian: `XᵀX/σ²`), the posterior covariance is `(GGN + λI)⁻¹` by direct inversion, and only the standalone `LCMCovariance` module is used — to fit `A` to that GGN |
+
+Regime B exists because a Gaussian GLM has an **exact** Laplace posterior: the GGN
+is the true Hessian, so there is no GGN-vs-Hessian approximation, no backend, and
+the `full` reference is exact rather than merely dense. That makes it the clean
+setting for the structural questions (ordering, complexity class, joint UQ). The
+cost is that regime-B results say nothing directly about neural networks — which is
+why Exp 14(c) re-runs the same protocol on a trained network's last-layer features,
+where a last-layer Laplace *is* a GLM.
+
+### Regime A — library experiments
+
+**Software.** Python 3.13.5, PyTorch 2.10.0+cu128, `laplace-torch` fork branch
+`lcm-covariance`, scikit-learn 1.6.1, statsmodels 0.14.4. Single NVIDIA RTX 4060
+Laptop GPU (8 GB); everything also runs on CPU.
+
+**MAP training** (`common.train_map`) — Adam throughout, full-batch loss
+`MSELoss` (regression) or `CrossEntropyLoss` (classification), model in `.eval()`
+afterwards:
+
+| experiment | architecture | data | optimiser | epochs | batch |
+|---|---|---|---|---|---|
+| 1 | `Linear(d,32)–Tanh–Linear(32,32)–Tanh–Linear(32,k)` | synthetic AR(1) features, `ρ=0.7`; reg `n=500`, `d=8` (last-layer) / `d=6` (all-weights); cls `n=600`, `k=3` | Adam, lr `5e-3`, wd `1e-3` | 120 | 128 |
+| 6 | same, `hidden = 24` (all-weights) or `32` (last-layer) | as Exp 1 | Adam, lr `5e-3`, wd `1e-3` | 120 | 128 |
+| 2 | `Linear(d,50)–Tanh–Linear(50,1)` | 6 UCI sets (california, concrete, diabetes, energy, wine, yacht) via sklearn/OpenML; inputs **and** targets standardised on train; 8 random 90/10 splits | Adam, lr `1e-2`, wd `1e-4` | 120 | 128 |
+| 3 | `Conv(1,16)–ReLU–MaxPool–Conv(16,32)–ReLU–MaxPool–Flatten–Linear(1568,84)–ReLU–Linear(84,10)` | MNIST (in) vs FashionMNIST (OOD), 4 000 test / 4 000 OOD, GGN over the first 8 000 train points | Adam, lr `1e-3`, wd `5e-4` | 5 | 256 |
+| 3b, 5 | 3-block Conv+BatchNorm+ReLU CNN → `Flatten–Linear(2048,128)–ReLU–Linear(128,10)` | CIFAR-10 (in) vs SVHN (OOD), GGN over the first 10 000 train points | Adam, lr `1e-3`, wd `5e-4`, **cosine-annealed** | 15 | 256 |
+| 4 | `Linear(d,40)–Tanh–Linear(40,30)–Tanh–Linear(30,k)` | synthetic | Adam, lr `5e-3`, wd `1e-3` | — | — |
+
+**Posterior construction** (`common.fit_laplace`). One code path for every
+structure, so the comparison is like-for-like:
+
+```python
+la = Laplace(model, likelihood,
+             subset_of_weights = "all" | "last_layer",
+             hessian_structure = "diag" | "kron" | "full" | "lcm",
+             lcm_steps=600, lcm_lr=3e-2)     # LCM only
+la.fit(train_loader)
+```
+
+* **Curvature:** the library default, `CurvlinopsGGN` — the GGN/Fisher, not the
+  exact Hessian, which is indefinite for a neural loss and so would not give a
+  valid covariance (rationale in `../PROJECT_REPORT.md` §6.2).
+* **Hyper-parameters:** prior precision — and, for regression, observation noise —
+  are tuned **per method** by maximising that method's own Laplace marginal
+  likelihood: Adam on `log θ`, lr `1e-1`, 100–200 steps (`tune_steps` 200 default;
+  150 for Exp 2, 100 for Exp 3). Every baseline therefore gets its own best case.
+  *Exception:* Exp 1 and Exp 6 skip tuning and pass `common_prior = 1.0`, fixing
+  one prior precision across all structures, so the KL measures **only** the
+  curvature approximation and not a hyper-parameter search.
+* **Predictive:** linearised GLM predictive, `la(X, pred_type="glm")`; for
+  classification the **probit** link approximation. Regression test-LL is reported
+  in the original target scale (the `y`-standardisation Jacobian is undone).
+* **Fidelity metrics** (Exp 1, 6): the dense posterior covariance is extracted
+  uniformly for every structure as `functional_covariance` with identity Jacobians,
+  then compared by `KL(N(θ*,Σ_approx) ‖ N(θ*,Σ_full))` and relative Frobenius.
+
+### Regime B — analytic GLM experiments
+
+**Data generator** (`exp10_ordering.simulate`, shared by Exp 8–11, 13–16). Features
+are an explicit AR(1) chain across the `d` dimensions,
+`x_j = ρ x_{j-1} + √(1−ρ²) ε_j`, so the feature order *is* the latent 1-D
+coordinate. Targets are `y = Xβ + σε` with a fixed smooth
+`β = Σ_f sin(2πf·coord + φ_f)/√d` over `f ∈ {2,5,9}`. Defaults: `ρ = 0.9`,
+`σ = 0.5`, `n = 2 000`–`3 000`, `n_test = 300`–`400`, prior precision `λ = 1.0`.
+
+**Posterior.** `GGN = XᵀX/σ²`; `Σ = (GGN + λI)⁻¹`; posterior mean
+`Σ Xᵀy/σ²`. For Exp 7's large-`d` rows the exact `full` reference uses the `n×n`
+dual/Woodbury form, so it stays exact at every `d`. Everything is float64.
+
+**Per-experiment regime-B settings.**
+
+| exp | `d` | `n` train | `n` test | seeds | notes |
+|---|---|---|---|---|---|
+| 7 | 500–20 000 | 3 000 | 2 000 | 3 (`d ≤ 5000`), else 1 | matrix-free `fit_frobenius`; `full` via `n×n` dual |
+| 8c | 500 / 1000 / 1500 | 3 000 | 400 | 10 | `a` initialised at the true order |
+| 9 | 500 / 1000 / 1500 | 40 labelled + 800 pool | 1 000 | 3 | greedy batch acquisition, `B = 25` |
+| 10 | 800 | 3 000 | 400 | 3 | natural vs permuted conditions |
+| 10b | 400 | 2 000 | 300 | 3 | order degraded by position noise, `a` frozen |
+| 11 | 100 (Tecator) / 64 (CO₂) | 144 / 1 332 | 40% holdout | 5 | real data, 60/40 random splits |
+| 13 | 200 (fit) / 1000 (joint) | — / 3 000 | — / 400 | 1 / 5 | same-class competitors |
+| 14 | 300 / 500 / 60 | 1 200 / 2 500 / 2 500 | — / 300 / 300 | 3 / 5 / 3 | (a) rank sweep, (b) decisive, (c) NN last layer |
+| 15 | 400 | 2 500 | 300 | 4 | permuted order; hybrid and annealing |
+| 16 | 800 (A) / 400 (B) | 3 000 | 400 | 3 | reproduces Exp 10's settings exactly |
+
+**Real data (Exp 11).** *Tecator* — OpenML `tecator` v1, 100 wavelength-ordered
+absorbance channels predicting fat content, `n = 240`, 5 random 60/40 splits
+(`n_train = 144`). *CO₂* — statsmodels Mauna Loa weekly series, interpolated,
+turned into a `d = 64` lag-regression (lag index = the 1-D order), `n_train = 1 332`.
+Features are standardised on train; observation noise is set to `0.5·sd(y_train)`
+rather than tuned.
+
+**Metrics.** Marginal predictive LL uses per-point variance
+`xᵀΣx + σ²`; **joint** predictive LL uses the full test covariance
+`X_test Σ X_testᵀ + σ²I` via Cholesky, normalised by the number of test points.
+"Gap closed" is defined in the section above.
+
+**Permutation convention** (Exp 10, 15, 16). `X[:, perm]` puts original column
+`perm[j]` at position `j`, and original column `i` carries latent coordinate `i`,
+so the true coordinate of permuted column `j` is **`perm[j]`**, not
+`argsort(perm)`. This was once a live bug (see Implementation notes §4) and is now
+pinned empirically: freezing `a = perm` fits to 0.13 rel-Frobenius while
+`a = argsort(perm)` gives 0.92, indistinguishable from random (0.92).
+
+### LCM fit settings
+
+`LCMCovariance(dim, eps=1e-6, init_a_scale=1.0, init_w=0.1, dtype=float64)`.
+`d = softplus(u)+eps`; `a` initialised on `linspace(−1,1,dim)·init_a_scale` unless
+overridden. Fitting minimises `‖A − T‖_F²/‖T‖_F²` with Adam and `auto_init=True`
+(rescales `w`/`d` from the target diagonal).
+
+| experiment | steps | lr | `a` initialisation | target normalised? |
+|---|---|---|---|---|
+| 1, 2, 3, 3b, 6 (via library) | 600 | 3e-2 | library default | ✘ |
+| 5 | 500 | 3e-2 | library default | ✘ |
+| 4 | 800 (50–1600 sweep) | 3e-2 | default / frozen | ✘ |
+| 7 | 800 | 5e-2 | `ρ`-matched spacing | ✘ (matrix-free `fit_frobenius`) |
+| 8c | 700 | 5e-2 | `arange(d)·(−log ρ)` = true order | ✘ |
+| 9 | 700 | 5e-2 | default | ✘ |
+| 10, 10b, 11 | 700–800 | 5e-2 | uninformed / seriation / natural | ✘ |
+| **13, 14, 15, 16** | 600–800 | 5e-2 | varies by arm | **✔ `T/s`, rescaled after** |
+
+**The normalisation column is the single most important row-to-row difference in
+this table.** Fitting `T/s` and multiplying the result by `s` is exact (the family
+is positively homogeneous), but the unnormalised fit misbehaves at GGN scale
+(~1e5). Exp 13(c) and Exp 16 quantify it: the same configuration moves from
+54% → 87% on the headline, and from −94.5% → +10.2% on the ordering result. **Every
+experiment with ✘ in that column is conservative by an unknown margin.**
+
+### Baseline implementations in regime B
+
+`diag` is `diag(1/(diag(GGN)+λ))` — the exact diagonal Laplace, not a fitted
+approximation. `full` is the exact inverse. The Exp 13/14 competitors
+(`chol_band*`, `diag_rank*`, the hybrid) are fitted with the *same* Adam objective,
+step count and normalisation as LCM, and are initialised from the target diagonal,
+so no family is advantaged by its initialisation.
+
+### Reported statistics
+
+Means over seeds with **95% confidence intervals** (`1.96·sd/√n_seeds`). Seed
+counts vary and are stated per experiment — 10 (Exp 8c), 8 splits (Exp 2), 5
+(Exp 11, 13b, 14b), 3–4 elsewhere. Exp 3b/5 use 2. Small-seed results should not
+be over-read; see Limitations.
+
+---
+---
+
 # Phase 1 — Core evaluation (Experiments 1–4)
 
 ## Experiment 1 — Posterior fidelity
@@ -1264,6 +1421,9 @@ pytest Laplace/tests/test_lcm.py -q    # 16 tests: fast paths vs dense reference
 ```
 
 Results are written to `experiments/results/`. Related documents:
+
+Full setup — architectures, datasets, optimisers, learning rates, posterior
+construction and hyper-parameter protocol — is in **Experimental setup** above.
 
 | document | contents |
 |---|---|

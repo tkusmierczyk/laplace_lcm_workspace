@@ -82,9 +82,12 @@ The work proceeded in six phases, each driven by an explicit goal:
    the ordering baselines, real data, and statistical CIs; write the honest
    assessment (`PUBLICATION_ASSESSMENT.md`, this report).
 
-Selected artifacts: a fork of `aleximmer/Laplace` on branch `lcm-covariance`
-(commits `0225c71 → 32a0131 → 9493eee → db6a554`); 14 passing unit/integration
-tests; ~13 experiment scripts + result CSVs/figures; and the documents above.
+Selected artifacts: a fork of `aleximmer/Laplace` on branch `lcm-covariance`;
+**16** passing unit/integration tests; **20** experiment scripts + result
+CSVs/figures; and the documents above. A seventh phase followed the six below —
+**correction** (Exp 12–16): pricing LCM against KFAC, comparing it to its own
+complexity class, and discovering that the central ordering negatives were a
+fitting artifact.
 
 ---
 
@@ -127,9 +130,11 @@ with the standard baselines (diag/KFAC/full) under one interface.
   sampler, exact NLL, and two fitters (`fit_dense`, matrix-free `fit_frobenius`).
 - `LCMLaplace(FullLaplace)` and `LCMLLLaplace(LLLaplace, LCMLaplace)` classes,
   registered as `hessian_structure="lcm"`.
-- 14 tests: every fast primitive is checked against a dense reference at machine
-  precision; the full pipeline (fit → marginal likelihood → GLM predictive →
-  prior optimization → sampling) is exercised for all-weights and last-layer.
+- 16 tests: every fast primitive is checked against a dense reference at machine
+  precision; both associative scans are cross-checked against an independent
+  sequential implementation; and the full pipeline (fit → marginal likelihood →
+  GLM predictive → prior optimization → sampling) is exercised for all-weights and
+  last-layer.
 
 Design decisions and the bugs found here are in §6.
 
@@ -497,8 +502,21 @@ exit) were also cleaned up.
 `AUDIT.md`, `LCM_REPORT.html`, this report.
 
 **Experimental section:** `experiments/EXPERIMENTS.md` — per-experiment detail
-(setup, metrics, result tables, how to read) for all 15 experiments. This report
-covers the arc and the *why*; that document covers the *what*.
+(setup, metrics, result tables, how to read) for all 17 experiments, plus a full
+**"Experimental setup"** section: architectures, datasets, optimisers and learning
+rates, how the MAP models were trained, how each posterior was obtained, and the
+hyper-parameter protocol. This report covers the arc and the *why*; that document
+covers the *what* and the *how*.
+
+**One setup fact worth repeating here**, because it changes how results should be
+read: the campaign has **two regimes**. Experiments 1–6 and 12 build the posterior
+with the `laplace-torch` `Laplace(...)` object (GGN via `CurvlinopsGGN`,
+hyper-parameters by marginal likelihood, GLM predictive). Experiments 7–11 and
+13–16 use **no library posterior at all** — for a Gaussian GLM the GGN `XᵀX/σ²` is
+the exact Hessian, so the posterior `(GGN + λI)⁻¹` is formed and inverted directly
+and only the standalone `LCMCovariance` module is used. Regime B is exact and clean
+for structural questions; it says nothing about neural networks on its own, which is
+why Exp 14(c) repeats it on a trained network's last-layer features.
 
 **Library fork:** `Laplace/` (branch `lcm-covariance`) — `laplace/lcm.py`,
 `LCMLaplace`/`LCMLLLaplace` in `laplace/baselaplace.py` & `laplace/lllaplace.py`,
@@ -511,5 +529,13 @@ implementation and records the deliberate deviations. Reproduce tests:
 shared harness `experiments/common.py`; results in `experiments/results/`.
 Reproduce the campaign: `python experiments/run_all.py` (+ the standalone `exp*`).
 
-**Datasets:** UCI regression (OpenML/sklearn), MNIST/FashionMNIST, CIFAR-10/SVHN
-(cached), Tecator NIR (OpenML), Mauna Loa CO₂ (statsmodels).
+**Datasets:** UCI regression (OpenML/sklearn: california, concrete, diabetes,
+energy, wine, yacht), MNIST/FashionMNIST, CIFAR-10/SVHN (cached), Tecator NIR
+(OpenML `tecator` v1), Mauna Loa CO₂ (statsmodels), plus the synthetic AR(1)
+generator shared by Experiments 7–11 and 13–16.
+
+**Environment.** Python 3.13.5, PyTorch 2.10.0+cu128, scikit-learn 1.6.1,
+statsmodels 0.14.4, `laplace-torch` fork branch `lcm-covariance`. Single NVIDIA
+RTX 4060 Laptop GPU (8 GB); all experiments also run on CPU. Regime-B experiments
+run in float64 throughout; regime-A follows the library (float32 model, float64
+LCM internals).
