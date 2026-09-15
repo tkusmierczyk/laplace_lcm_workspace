@@ -17,7 +17,7 @@ import pandas as pd
 import torch
 
 import exp10_ordering as E  # reuse simulate()
-from laplace.lcm import LCMCovariance
+import glm_laplace as G       # library-backed posterior (see glm_laplace.py)
 
 warnings.filterwarnings("ignore")
 torch.set_default_dtype(torch.float64)
@@ -33,25 +33,34 @@ def joint_ll(mu, Cov, y):
 
 
 def run(d, seed, n=3000, rho=0.9, ntest=400, noise=0.5, prior=1.0):
+    """Posteriors and predictives come from `laplace-torch` via `glm_laplace`, so
+    these numbers describe the shipped `LCMLaplace` / `DiagLaplace` / `FullLaplace`
+    classes rather than a parallel implementation.
+
+    The LCM `a` is initialised at the natural order through the library's own
+    `lcm_init_a_scale`: the default init is `linspace(-1, 1, d) * init_a_scale`, so
+    `init_a_scale = -log(rho) * d / 2` reproduces the true AR(1) spacing
+    `-log(rho)` between adjacent coordinates (the kernel depends only on
+    differences, so the offset is irrelevant).
+    """
     X, y, Xt, yt = E.simulate(n, d, rho, seed, ntest, noise)
-    GGN = X.T @ X / noise**2
-    Cov_full = torch.linalg.inv(GGN + prior * torch.eye(d))
-    mu_t = Xt @ (Cov_full @ (X.T @ y / noise**2))
+    w_map = G.map_weights(X, y, prior, noise)
 
-    lcm = LCMCovariance(d, dtype=torch.float64)
-    with torch.no_grad():                       # order known -> natural init
-        lcm.a.copy_(torch.arange(d) * -np.log(rho))
-    lcm.fit_dense(GGN, n_steps=700, lr=5e-2)    # auto_init handles w/d scaling
-    Cov_lcm = torch.linalg.inv(lcm.dense() + prior * torch.eye(d))
-    Cov_diag = torch.diag(1.0 / (GGN.diagonal() + prior))
+    las = {
+        "diag": G.fit_glm(X, y, "diag", prior, noise, w_map=w_map),
+        "lcm": G.fit_glm(X, y, "lcm", prior, noise, w_map=w_map,
+                         lcm_steps=700, lcm_lr=5e-2,
+                         lcm_init_a_scale=-np.log(rho) * d / 2),
+        "full": G.fit_glm(X, y, "full", prior, noise, w_map=w_map),
+    }
 
-    Inoise = noise**2 * torch.eye(ntest)
     out = {"d": d, "seed": seed}
-    for nm, C in [("diag", Cov_diag), ("lcm", Cov_lcm), ("full", Cov_full)]:
-        var = torch.einsum("ti,ij,tj->t", Xt, C, Xt) + noise**2
+    for nm, la in las.items():
+        mu_m, var = G.marginal(la, Xt, noise)
         out[f"marg_{nm}"] = float((-0.5 * (torch.log(2 * np.pi * var)
-                                           + (yt - mu_t) ** 2 / var)).mean())
-        out[f"joint_{nm}"] = joint_ll(mu_t, Xt @ C @ Xt.T + Inoise, yt)
+                                           + (yt - mu_m) ** 2 / var)).mean())
+        mu_j, Cj = G.joint(la, Xt, noise)
+        out[f"joint_{nm}"] = joint_ll(mu_j, 0.5 * (Cj + Cj.T), yt)
     out["gap_closed"] = ((out["joint_lcm"] - out["joint_diag"])
                          / (out["joint_full"] - out["joint_diag"] + 1e-12))
     return out
