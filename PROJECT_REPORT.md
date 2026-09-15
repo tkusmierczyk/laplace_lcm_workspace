@@ -64,7 +64,7 @@ predates the correction.
 
 ## 1. High-level overview (the arc)
 
-The work proceeded in six phases, each driven by an explicit goal:
+The work proceeded in seven phases, each driven by an explicit goal:
 
 1. **Scoping** — survey Bayesian-learning uses of the LCM representation for
    ≥10k correlated variables; select the most promising (`LCM_bayesian_uses.md`).
@@ -81,13 +81,14 @@ The work proceeded in six phases, each driven by an explicit goal:
 6. **Publication hardening** — close the reviewer-critical gaps: matrix-free fit,
    the ordering baselines, real data, and statistical CIs; write the honest
    assessment (`PUBLICATION_ASSESSMENT.md`, this report).
+7. **Cost, complexity class, and correction** (§5b) — price LCM against KFAC, test
+   it against its own `O(d)` class (banded Cholesky, low-rank), study four proposed
+   directions, and — unexpectedly — discover that the central ordering negatives
+   were a fitting artifact.
 
 Selected artifacts: a fork of `aleximmer/Laplace` on branch `lcm-covariance`;
 **16** passing unit/integration tests; **20** experiment scripts + result
-CSVs/figures; and the documents above. A seventh phase followed the six below —
-**correction** (Exp 12–16): pricing LCM against KFAC, comparing it to its own
-complexity class, and discovering that the central ordering negatives were a
-fitting artifact.
+CSVs/figures; and the documents above.
 
 ---
 
@@ -165,13 +166,44 @@ NN-layer curvature is Kronecker-structured (KFAC's home), not chain-structured.
 | 6 | Per-layer (block-diagonal) LCM | KL to full improves 12–22% vs a single chain; still short of KFAC. |
 | 7 | 1-D-correlated GLM (LCM's "home") | The reframing: LCM's structure is only *correct* for genuinely 1-D-correlated, non-Kronecker curvature (GLMs with ordered features). |
 | 8/8b/8c | **Marginal vs joint predictive LL** | **The key positive, but modest.** Marginal LL: LCM ties (slightly worse than) diagonal — insensitive to off-diagonal covariance. **Joint LL: LCM closes a d-dependent fraction of the diagonal→full gap — 10-seed CI 62%±49% (d=500), 52%±16% (d=1000), 23%±12% (d=1500)** (§7). |
-| 10/10b + controls | **Does the *learned* ordering matter?** | Given the correct order LCM works (+58% joint-gap closed, learned-but-correctly-initialised +59%). With an unknown/permuted order, gradient learning recovers \|Spearman\| = **0.028** (≈ random) and lands at **−84%** (*worse than diagonal*); seriation recovery is highly seed-dependent (**0.31 / 0.70 / 0.99**, mean 0.67) and its variant scores −79%. Fragility curve: the chain beats diagonal at \|Spearman\| ≥ **0.999** but **fails at 0.998**. The model is permutation-**equivariant** — the failure is purely that fitting `a` cannot discover a latent order. Nuance: with a wrong order the *fixed*-order variant degrades **gracefully to diagonal** (0%), while the *learned* variant overfits into a confidently-wrong chain (−84%). |
+| 10/10b + controls | **Does the *learned* ordering matter?** ⚠ *see correction above — the negatives below were a fitting artifact (Exp 16)* | Given the correct order LCM works (+58% joint-gap closed, learned-but-correctly-initialised +59%). With an unknown/permuted order, gradient learning recovers \|Spearman\| = **0.028** (≈ random) and lands at **−84%** (*worse than diagonal*); seriation recovery is highly seed-dependent (**0.31 / 0.70 / 0.99**, mean 0.67) and its variant scores −79%. Fragility curve: the chain beats diagonal at \|Spearman\| ≥ **0.999** but **fails at 0.998**. The model is permutation-**equivariant** — the failure is purely that fitting `a` cannot discover a latent order. Nuance: with a wrong order the *fixed*-order variant degrades **gracefully to diagonal** (0%), while the *learned* variant overfits into a confidently-wrong chain (−84%). |
+| 9 | **Active learning** — does joint UQ buy a downstream win? | **No, and cleanly so.** Greedy batch selection under the LCM posterior is *worse than under the diagonal one* at every `d` (137.6/163.8/177.5 vs 140.3/167.0/180.4), while greedy-under-`full` is best (141.9/167.9/181.1) — so better joint UQ does help in principle and the failure is LCM's fit. Cause: active learning starts at `n ≪ d`, where the empirical second moment is rank-deficient and LCM's extra parameters model noise (fit residual 0.74 at `n=40`). |
 | 11 | **Real ordered data** (Tecator NIR, CO₂ lags) | On NIR (known wavelength order, n≈d): LCM **closes ~100%** of the diagonal→full joint-LL gap and beats diagonal on marginal too. On CO₂ (n≫d): gap negligible. In both, `LCM-learned ≈ LCM-fixed` — the **learned coordinate is inactive** because the order is already known. |
 
-**Conclusion of Phase 5:** the genuine, real-data-confirmed advantage of LCM is
-**joint predictive uncertainty for known-1-D-ordered features**; its distinctive
-learned coordinate does no useful work (can't recover unknown orders; unnecessary
-when the order is known).
+**Conclusion of Phase 5 (as it stood then):** the genuine, real-data-confirmed
+advantage of LCM is **joint predictive uncertainty for known-1-D-ordered
+features**; its distinctive learned coordinate does no useful work (can't recover
+unknown orders; unnecessary when the order is known).
+
+*This conclusion was revised by Phase 7 below: the "known-order" requirement did
+not survive a corrected fit.*
+
+---
+
+## 5b. Cost, complexity class, and correction (Experiments 12–16)
+
+A later phase, prompted by two questions the evaluation had never asked — *what do
+these methods cost?* and *is LCM even the best model in its own class?* — plus a
+study of four proposed directions. It produced the project's most consequential
+corrections.
+
+| Exp | Question | Result |
+|---|---|---|
+| 12 | **What do LCM and KFAC cost, and are they comparable?** | LCM's `3P` storage beats KFAC only above a layer aspect ratio of `(3+√5)/2 ≈ 2.6` (KFAC wins 1.5× on square layers) — correcting a false "strictly cheaper than KFAC" claim in this report. On *time* KFAC wins everywhere: **57× cheaper to construct** (closed-form single pass vs LCM's iterative fit) and 13–562× cheaper per log-determinant, with no asymptotic crossover. And for a **scalar-output GLM — the setting where LCM wins — KFAC *is* full Laplace exactly** (rel-Frobenius 1.3e-06), so it offers no compression and was never an available cheap baseline there. The two encode different curvature geometries and are not substitutes. |
+| 13 | **Is LCM the best model in its own `O(d)` class?** (vs banded Cholesky `AAᵀ`, low-rank) | **Split.** In the niche LCM reaches 0.140 rel-Frobenius at `3d` where low-rank needs `17d`; on joint LL it closes **+87%** while every peer closes ≈0% and the banded ones are *actively harmful* (−65%). But a banded Cholesky has **its own home** LCM cannot enter (sparse tridiagonal precision: 0.001 vs LCM's 0.465), and on real NN curvature low-rank beats LCM per parameter. Also found the scale-normalisation deficiency (54%→87% on the headline). |
+| 14 | **Low-rank in depth; very large `d`** | **Matched *fit* does not give matched *prediction*:** `rank32` reaches 0.191 rel-Frobenius against LCM's 0.137 and still closes only 29%±41 of the joint gap vs LCM's 93%±20 — because the posterior covariance here is near-banded (`K⁻¹` is tridiagonal) and diagonal-plus-low-rank cannot be. *Corollary applying backwards to Exp 1/4/13: Frobenius fit is a poor proxy for predictive quality.* At `d=10⁵` LCM needs 2 MB vs 74.5 GB dense — but low-rank is equally feasible and ~70× faster, so LCM's case at scale rests on quality, not cost. |
+| 15 | **Two proposed fixes for the ordering problem** | Hybrid `D + WK(a)W + VVᵀ` fits and predicts better than either component (38.4% vs 28.4%) and beats equal-budget low-rank 3×, but CIs overlap — promising, not established. **Nugget annealing fails**: both a hard and a soft variant made order recovery *worse* (0.035–0.039 vs 0.100). Graduated non-convexity smooths a landscape whose optimum moves continuously; the object here is a **permutation**, and a large nugget makes the objective less sensitive to `a` rather than making the right `a` easier to find. Spectral seriation dominates, with no schedule. |
+| 16 | **Were the ordering negatives real?** | **No — they were a fitting artifact.** At Exp 10's exact settings, changing one variable at a time: as-published **−94.5%** → scale-normalised **+10.2%**, with the recovered order *unchanged* (0.028 → 0.029). Seriation **−65.5%** frozen-and-unnormalised → **+65.4%** as an initialisation that is then refined (oracle ceiling +89.6%). The fragility threshold survives qualitatively but shifts up ~35 points, and \|Spearman\| saturates at 4 d.p. across a 33-point swing, so the "≥0.999 required" figure is unreliable. |
+
+**Conclusion of Phase 7.** Three things changed. (i) The cost story is narrower
+than claimed — LCM buys *memory on rectangular layers*, and pays for it in
+construction time. (ii) LCM beats its whole complexity class in its niche, and for
+the right reason (structure, not capacity) — but loses to low-rank on NN weight
+curvature, an independent argument against that setting. (iii) **"LCM requires a
+known 1-D order" is withdrawn.** Seriate, refine, and normalise the target, and it
+closes 65% of the diagonal→full gap on data whose ordering is entirely hidden. What
+survives from Phase 5 is the narrower claim that gradient descent *alone* cannot
+discover an order.
 
 ---
 
@@ -426,6 +458,36 @@ clean run, but the timings were inflated ~4×; only the clean run is cited. Stal
 `pgrep`-based waiter loops that matched their own command line (and so could never
 exit) were also cleaned up.
 
+**Phase 7 headline numbers (Exp 12–16).**
+
+*Cost (Exp 12), measured:* KFAC storage ranges 3.00×P (square layer) to 204.8×P
+(2048×10) against LCM's flat 3×P — LCM wins only above aspect ratio ≈2.6. Time on a
+trained 84→10 last layer: KFAC 128 ms to construct vs LCM 7 340 ms (**57×**), and
+0.052 ms vs 0.680 ms per log-det. For a scalar-output GLM, KFAC equals full Laplace
+to 1.3e-06 — no compression.
+
+*Complexity class (Exp 13/14), rel-Frobenius at `d=200` and joint gap at `d=500`:*
+
+| target / metric | `diag` | `band1` 2d | `rank2` 3d | **`lcm` 3d** | `rank16` 17d | `rank32` 33d |
+|---|---|---|---|---|---|---|
+| AR(1) GLM GGN (fit) | 0.946 | 0.864 | 0.742 | **0.140** | 0.147 | — |
+| sparse tridiagonal (fit) | 0.480 | **0.001** | 0.470 | 0.465 | 0.400 | — |
+| NN last-layer GGN (fit) | 0.916 | 0.903 | 0.760 | **0.754** | 0.251 | — |
+| **joint gap closed** | 0% | −155.7% | −29.8% | **+93.4%** | −32.0% | +29.3% |
+
+*Ordering, corrected (Exp 16), at Exp 10's exact settings:*
+
+| variant | joint gap | recovery |
+|---|---|---|
+| as published (unnormalised) | −94.5% ± 48.8 | 0.028 |
+| **scale-normalised** | **+10.2% ± 6.9** | 0.029 |
+| seriation frozen, unnormalised | −65.5% ± 41.8 | 0.793 |
+| **seriation init + refined, normalised** | **+65.4% ± 19.7** | 0.792 |
+| oracle order | +89.6% ± 20.8 | 1.000 |
+
+*Annealing (Exp 15b) does not work:* order recovery 0.035 (hard) / 0.039 (soft)
+against a plain baseline of 0.100; seriation reaches 0.624.
+
 ---
 
 ## 8. Limitations & issues (consolidated)
@@ -482,16 +544,31 @@ exit) were also cleaned up.
   NeurIPS-BDL) → TMLR — combining (a) the systems artifact (near-linear structured
   Laplace with an associative-scan log-det, in a maintained library), (b) the
   characterization (fidelity ≠ predictive; marginal-insensitive / joint-sensitive;
-  ordering fragility; Kronecker-vs-chain), and (c) the real-data joint-UQ win for
-  known-ordered features. See `PUBLICATION_ASSESSMENT.md` for venue analysis,
-  novelty check, and reviewer rebuttals.
-- **Do not** claim SOTA Bayesian-DL UQ, an active-learning/BO win, or a working
-  *learned* ordering.
-- **Highest-value next steps:** (i) a fully matrix-free `LCMLaplace` to make the
-  scalability claim end-to-end; (ii) more real known-order datasets (spectroscopy,
-  genomics-LD, climate transects) with marglik-tuned noise and more seeds;
-  (iii) if a broader claim is wanted, solve the ordering problem (seriation+refine
-  or discrete search) — but the fragility result suggests limited upside.
+  Kronecker-vs-chain; and — from Exp 14 — *Frobenius fit is a poor proxy for
+  predictive quality*), and (c) the joint-UQ win for 1-D-ordered features.
+  See `PUBLICATION_ASSESSMENT.md` for venue analysis, novelty check, and rebuttals;
+  note it predates the Exp 16 correction.
+- **The framing should be revisited upward.** The characterization-only framing was
+  chosen because the method appeared to need a *known* order. Exp 16 withdrew that,
+  so the contribution is now closer to a usable method: *seriate, refine, normalise*
+  recovers ~3/4 of what an oracle ordering buys, on completely unordered data.
+- **Do not** claim SOTA Bayesian-DL UQ, an active-learning/BO win, a working
+  *learned* ordering (gradient descent still cannot discover one), or that LCM is
+  cheaper than KFAC (it is not, except in memory on rectangular layers).
+- **Highest-value next steps, revised:**
+  (i) **Re-run Exp 8c, 10, 10b and 11 under normalised fitting** — every
+      unnormalised number in this report is conservative by an unknown margin, and
+      the `d`-dependence of the headline may partly be fit degradation rather than
+      method degradation. This is now first, ahead of everything else.
+  (ii) Make `LCMCovariance.fit_dense`/`fit_frobenius` normalise internally, so the
+      deficiency cannot recur — the change is exact, not a heuristic.
+  (iii) A proper multi-seed study of **seriate-then-refine** across `d` and `ρ` and
+      on the Exp 11 real datasets. This is now the most publishable result the
+      project has, and it rests on 3 seeds.
+  (iv) A fully matrix-free `LCMLaplace` to make the scalability claim end-to-end;
+      more real ordered datasets (spectroscopy, genomics-LD, climate transects).
+  (v) A better ordering-accuracy metric than \|Spearman\|, which saturates at 4
+      decimal places across a 33-point swing in outcome.
 
 ---
 
