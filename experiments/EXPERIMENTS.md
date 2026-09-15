@@ -33,8 +33,9 @@ layer's GGN is **Kronecker**-structured, which is KFAC's home.
 metric (per-point NLL, ECE, single-point OOD), and marginal predictive
 uncertainty is nearly insensitive to off-diagonal covariance — precisely what LCM
 adds. Switching to **joint** predictive likelihood over a batch exposed a real
-advantage (Exp 8c: 62%/52%/23% of the diagonal→full gap closed at d=500/1000/1500,
-10 seeds), confirmed on real ordered data (Exp 11, Tecator NIR: ~100%). The
+advantage (Exp 8c: **87%/84%/64%** of the diagonal→full gap closed at
+d=500/1000/1500, 10 seeds, through the library), confirmed on real ordered data
+(Exp 11, Tecator NIR: ~100%). The
 boundary conditions are sharp: it needs `n ≳ d` (so active learning fails,
 Exp 9), and the paper's distinctive *learned* coordinate cannot discover a latent
 order (recovery 0.028) and is redundant when the order is already known (Exp 11:
@@ -675,21 +676,34 @@ evaluated over batches of test points under the full predictive covariance.
 
 | d | marginal-LL (diag / LCM / full) | joint-LL (diag / LCM / full) | **joint gap closed by LCM** |
 |---|---|---|---|
-| 500 | −0.823 / −0.826 / −0.823 | −0.830 / −0.823 / −0.820 | **62% ± 49%** |
-| 1000 | −0.922 / −0.933 / −0.919 | −0.946 / −0.927 / −0.907 | **52% ± 16%** |
-| 1500 | −1.076 / −1.110 / −1.057 | −1.116 / −1.097 / −1.033 | **23% ± 12%** |
+| 500 | −0.823 / −0.824 / −0.823 | −0.830 / −0.821 / −0.820 | **86.7% ± 24** |
+| 1000 | −0.922 / −0.923 / −0.919 | −0.946 / −0.914 / −0.907 | **84.3% ± 11** |
+| 1500 | −1.076 / −1.079 / −1.057 | −1.116 / −1.064 / −1.033 | **64.2% ± 10** |
 
 **Outcome.** The reframing works, and the contrast within each row is the point:
-on **marginal** LL, LCM is *slightly worse* than diagonal (the structured fit's
-imperfection costs a little per-point calibration); on **joint** LL over the same
-posteriors, LCM is clearly better. This is the project's main positive result,
-and it turned a flat negative into a finding.
+on **marginal** LL LCM now *ties* diagonal (−0.923 vs −0.922 at d=1000), while on
+**joint** LL over the same posteriors it is clearly and significantly better. This
+is the project's main positive result, and it turned a flat negative into a finding.
 
-**Read it honestly, though.** The advantage is **real but modest and shrinks with
-`d`** (62% → 52% → 23%), and it is **not statistically significant at d=500**
-(±49%). An earlier 3-seed run with a near-zero nugget reported 70–81%; the
-10-seed number with the library's default fit is the trustworthy one, and the gap
-is sensitive to the nugget fraction — a tuning knob, not a robust large effect.
+**These numbers were revised upward.** This experiment now runs through
+`laplace-torch` (via `glm_laplace.py`) with the normalisation fix in
+`LCMCovariance`, so it describes the shipped `LCMLaplace` class. With `diag` and
+`full` unchanged to 1e-14 — the LCM path being the only variable — the result moved:
+
+| d | hand-rolled, unnormalised fit | **library + normalisation** |
+|---|---|---|
+| 500 | 61.8% ± 49 | **86.7% ± 24** |
+| 1000 | 52.1% ± 16 | **84.3% ± 11** |
+| 1500 | 23.2% ± 12 | **64.2% ± 10** |
+
+Confidence intervals roughly halve, the result is significant at every `d`, and
+**the `d`-dependence flattens** (87/84/64 against 62/52/23). That last point
+matters: the apparent decay with `d` was substantially *fit* degradation rather
+than *method* degradation, which had been one of the main caveats limiting this
+claim. On the marginal metric LCM also stops losing (−0.9325 → −0.9229).
+
+*Still to note:* an earlier 3-seed run with a near-zero nugget reported 70–81%; the
+10-seed library number above is the trustworthy one.
 
 **Conclusion.** Off-diagonal structure pays off only where the metric rewards
 *correlated* predictions. This defines the niche, and everything after Exp 8 is an
@@ -1075,10 +1089,13 @@ normalisation, on **identical data and identical seeds** (`joint_diag` and
 
 Better on **every seed**. The library's `auto_init` (which rescales `w`/`d` from
 the target diagonal) does not fully solve the scale problem; normalising the target
-itself does. So **the reported 62%/52%/23% headline numbers are conservative** —
-they understate LCM for a fitting reason, not a modelling one. Exp 8c has not been
-re-run under normalisation; doing so is the single highest-value follow-up, and
-`LCMCovariance.fit_dense` should probably normalise internally.
+itself does. So the reported 62%/52%/23% headline numbers were **conservative** —
+they understated LCM for a fitting reason, not a modelling one.
+
+**Both follow-ups this section recommended have since been done.**
+`LCMCovariance.fit_dense`/`fit_frobenius` now normalise internally, and Exp 8c has
+been re-run through `laplace-torch`: the headline is **86.7/84.3/64.2%**, up from
+62/52/23%, with roughly half the CI width. See Exp 8c above.
 
 **Conclusion.** LCM survives the comparison against its own complexity class, but
 the verdict is split and worth stating precisely. *In its niche* it is not merely
@@ -1354,8 +1371,8 @@ scaling table above predates both and is marked accordingly.
    is not rescued by epistemic OOD scores (Exp 5). KFAC and Full dominate on
    fully-connected/convolutional models.
 4. **Joint predictive UQ (positive — the main result).** Over *batches*, LCM
-   closes 62%/52%/23% of the diagonal→full gap at d=500/1000/1500 (Exp 8c,
-   10 seeds) and ~100% on Tecator NIR (Exp 11).
+   closes **87%/84%/64%** of the diagonal→full gap at d=500/1000/1500 (Exp 8c,
+   10 seeds, run through `laplace-torch`) and ~100% on Tecator NIR (Exp 11).
 5. **Mechanism (explanatory).** A single 1-D Markov chain cannot embed generic
    NN-weight curvature (Exp 4a plateau at 0.66) because layer curvature is
    Kronecker, not chain. Per-layer blocking recovers only 12–22% of that (Exp 6).

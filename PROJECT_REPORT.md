@@ -165,7 +165,7 @@ NN-layer curvature is Kronecker-structured (KFAC's home), not chain-structured.
 | 5 | Epistemic OOD (mutual information / BALD instead of max-confidence) | Correctly exposes epistemic uncertainty (MAP→0.50 AUROC), KFAC/Full 0.72, but **LCM 0.62 < Diag 0.64**. Does not rescue LCM. |
 | 6 | Per-layer (block-diagonal) LCM | KL to full improves 12–22% vs a single chain; still short of KFAC. |
 | 7 | 1-D-correlated GLM (LCM's "home") | The reframing: LCM's structure is only *correct* for genuinely 1-D-correlated, non-Kronecker curvature (GLMs with ordered features). |
-| 8/8b/8c | **Marginal vs joint predictive LL** | **The key positive, but modest.** Marginal LL: LCM ties (slightly worse than) diagonal — insensitive to off-diagonal covariance. **Joint LL: LCM closes a d-dependent fraction of the diagonal→full gap — 10-seed CI 62%±49% (d=500), 52%±16% (d=1000), 23%±12% (d=1500)** (§7). |
+| 8/8b/8c | **Marginal vs joint predictive LL** | **The key positive.** Marginal LL: LCM ties diagonal — insensitive to off-diagonal covariance. **Joint LL: LCM closes 86.7%±24 (d=500), 84.3%±11 (d=1000), 64.2%±10 (d=1500) of the diagonal→full gap** over 10 seeds, run through `laplace-torch` (§7). *Revised upward from 62/52/23% once the fit's scale defect was fixed — the earlier decay with d was largely fit degradation.* |
 | 10/10b + controls | **Does the *learned* ordering matter?** ⚠ *see correction above — the negatives below were a fitting artifact (Exp 16)* | Given the correct order LCM works (+58% joint-gap closed, learned-but-correctly-initialised +59%). With an unknown/permuted order, gradient learning recovers \|Spearman\| = **0.028** (≈ random) and lands at **−84%** (*worse than diagonal*); seriation recovery is highly seed-dependent (**0.31 / 0.70 / 0.99**, mean 0.67) and its variant scores −79%. Fragility curve: the chain beats diagonal at \|Spearman\| ≥ **0.999** but **fails at 0.998**. The model is permutation-**equivariant** — the failure is purely that fitting `a` cannot discover a latent order. Nuance: with a wrong order the *fixed*-order variant degrades **gracefully to diagonal** (0%), while the *learned* variant overfits into a confidently-wrong chain (−84%). |
 | 9 | **Active learning** — does joint UQ buy a downstream win? | **No, and cleanly so.** Greedy batch selection under the LCM posterior is *worse than under the diagonal one* at every `d` (137.6/163.8/177.5 vs 140.3/167.0/180.4), while greedy-under-`full` is best (141.9/167.9/181.1) — so better joint UQ does help in principle and the failure is LCM's fit. Cause: active learning starts at `n ≪ d`, where the empirical second moment is rank-deficient and LCM's extra parameters model noise (fit residual 0.74 at `n=40`). |
 | 11 | **Real ordered data** (Tecator NIR, CO₂ lags) | On NIR (known wavelength order, n≈d): LCM **closes ~100%** of the diagonal→full joint-LL gap and beats diagonal on marginal too. On CO₂ (n≫d): gap negligible. In both, `LCM-learned ≈ LCM-fixed` — the **learned coordinate is inactive** because the order is already known. |
@@ -375,9 +375,9 @@ settings (1.6–2.9× better); KFAC 1.5–104 (best).
 
 | d | marginal-LL (diag / LCM / full) | joint-LL (diag / LCM / full) | joint gap-to-full closed by LCM |
 |---|---|---|---|
-| 500 | −0.823 / −0.826 / −0.823 | −0.830 / −0.823 / −0.820 | **62% ± 49%** |
-| 1000 | −0.922 / −0.933 / −0.919 | −0.946 / −0.927 / −0.907 | **52% ± 16%** |
-| 1500 | −1.076 / −1.110 / −1.057 | −1.116 / −1.097 / −1.033 | **23% ± 12%** |
+| 500 | −0.823 / −0.824 / −0.823 | −0.830 / −0.821 / −0.820 | **86.7% ± 24** |
+| 1000 | −0.922 / −0.923 / −0.919 | −0.946 / −0.914 / −0.907 | **84.3% ± 11** |
+| 1500 | −1.076 / −1.079 / −1.057 | −1.116 / −1.064 / −1.033 | **64.2% ± 10** |
 
 Reading (rigorous, 10 seeds): the joint-UQ advantage is **real but modest and
 shrinks with d** (and is not significant at d=500). On **marginal** LL, LCM is

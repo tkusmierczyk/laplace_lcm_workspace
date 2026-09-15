@@ -84,7 +84,11 @@ it, which is worth +11.2%.
    swing in outcome*, so it is the wrong ruler. Do not put the 0.999 figure in a
    paper.
 4. **Every unnormalised number in this project is conservative by an unknown
-   margin.** That includes the 62/52/23% headline.
+   margin.** The headline has since been re-measured: routed through
+   `laplace-torch` with the fit fixed, Exp 8c gives **86.7/84.3/64.2%**, up from
+   62/52/23%, with roughly half the CI width — and the decay with `d` largely
+   disappears, removing one of the paper's main caveats. The *other* unnormalised
+   results (Exp 10, 10b, 11) have not been re-run.
 
 **What still stands:** gradient descent *alone* cannot discover a latent order
 (recovery 0.028, unchanged under normalisation). The method needs seriation to
@@ -107,7 +111,7 @@ a smaller claim than the paper originally wanted, but an honest and defensible o
 | 5 | Epistemic OOD (MI/BALD) | KFAC/Full 0.72, Diag 0.64, **LCM 0.62** | Solid negative | Honest boundary |
 | 6 | Per-layer (block-diag) LCM | KL improves 12–22%; still ≠ KFAC | Mild | Appendix |
 | 7 | 1-D-correlated GLM, matrix-free to d=20k | No NaN anywhere after the `kernel_matvec` fix; marginal-LL ties Diag | Solid | Scalability capability |
-| 8c | **Joint vs marginal** (10 seeds, CIs) | Joint gap closed **62±49 / 52±16 / 23±12%** at d=500/1000/1500 — *unnormalised; Exp 16 implies these are low* | key positive | Central claim |
+| 8c | **Joint vs marginal** (10 seeds, CIs) | Joint gap closed **86.7±24 / 84.3±11 / 64.2±10%** at d=500/1000/1500, run through `laplace-torch` with the fit fixed. *Was 62/52/23% on the unnormalised hand-rolled path; the decay with d was largely fit degradation* | **Strong** | Central claim |
 | 9 | Batch active learning | **Fails**: greedy(LCM) 43–55% of oracle info-gain vs greedy(Diag) 83–90%; mechanism isolated (fit residual 0.74 @ n=40) | Strong negative *with mechanism* | Valuable boundary |
 | 10/10b | Ordering | ⚠ **superseded by Exp 16.** What survives: learned recovery **0.028** | — | Cite only the recovery figure |
 | 11 | **Real data** (Tecator NIR) | Closes **~100%** of the joint gap, beats Diag on marginal too, 5 seeds | **Strong** | The real-data anchor |
@@ -201,11 +205,12 @@ The 2026-08 list is largely resolved; the new list is shorter but sharper.
 
 **Open, in priority order:**
 
-1. **Re-run the campaign under normalised fitting.** Exp 8c, 10, 10b and 11 all use
-   the deficient fit. This is not optional bookkeeping: the `d`-dependence of the
-   headline (62→52→23%) may be partly *fit degradation rather than method
-   degradation*, and that caveat currently limits the paper's central claim. Also
-   fix `LCMCovariance.fit_dense`/`fit_frobenius` to normalise internally.
+1. **Re-run the rest of the campaign under normalised fitting.** ~~Exp 8c~~ is
+   done — and it confirmed the suspicion outright: the `d`-dependence (62→52→23%)
+   was largely *fit* degradation, and on the corrected path it flattens to
+   87/84/64%. The library now normalises internally, so `LCMLaplace` reproduces
+   this. **Exp 10, 10b and 11 still run on the deficient fit** and should be
+   expected to move by a comparable margin.
 2. **Seriation-then-band head-to-head** (see §2). A fixed banded Cholesky in the
    *seriated* order is the strongest remaining "you invented nothing" objection,
    and it is cheap to run.
