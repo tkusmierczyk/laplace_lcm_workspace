@@ -1685,6 +1685,23 @@ class LCMLaplace(FullLaplace):
         Floor for the diagonal term ``d``.
     lcm_init_a_scale : float, default=1.0
         Scale of the initial ``linspace`` latent coordinates.
+    lcm_init_a : torch.Tensor, optional
+        Explicit initial latent coordinates ``a`` (shape ``(n_params,)``),
+        overriding the ``linspace`` init. Use this to supply a **known** ordering
+        (a wavelength index, a time lag, a genomic position) or one estimated by
+        spectral seriation. Only differences between coordinates matter, so any
+        offset is irrelevant; the spacing sets the correlation decay
+        (``rho = exp(-delta_a)`` between adjacent coordinates).
+    lcm_learn_a : bool, default=True
+        Whether to optimise ``a`` during the fit. Set ``False`` to *freeze* a
+        supplied ordering and fit only ``w`` and the nugget ``d``. Gradient descent
+        cannot discover an unknown ordering, so the useful modes are: freeze a known
+        order, or supply a seriation estimate and leave this ``True`` to refine it.
+    lcm_normalize : bool, default=True
+        Scale-normalise the fit target (see
+        :meth:`~laplace.lcm.LCMCovariance.fit_dense`). Exact, and strongly
+        recommended: without it the fit barely moves at GGN scale. ``False``
+        reproduces pre-fix behaviour, for reproducing older results.
     lcm_fast_logdet : bool, default=True
         Use the ``O(n_params)`` Kalman log-determinant for the marginal
         likelihood (validated to match the dense log-determinant).
@@ -1709,6 +1726,9 @@ class LCMLaplace(FullLaplace):
         lcm_lr: float = 1e-2,
         lcm_eps: float = 1e-6,
         lcm_init_a_scale: float = 1.0,
+        lcm_init_a: torch.Tensor | None = None,
+        lcm_learn_a: bool = True,
+        lcm_normalize: bool = True,
         lcm_fast_logdet: bool = True,
     ):
         super().__init__(
@@ -1728,6 +1748,9 @@ class LCMLaplace(FullLaplace):
         self.lcm_lr = lcm_lr
         self.lcm_eps = lcm_eps
         self.lcm_init_a_scale = lcm_init_a_scale
+        self.lcm_init_a = lcm_init_a
+        self.lcm_learn_a = lcm_learn_a
+        self.lcm_normalize = lcm_normalize
         self.lcm_fast_logdet = lcm_fast_logdet
         self.lcm = None
         # relative Frobenius error ||A - H||_F / ||H||_F of the structured fit
@@ -1753,8 +1776,20 @@ class LCMLaplace(FullLaplace):
             init_a_scale=self.lcm_init_a_scale,
             dtype=torch.float64,
         ).to(self._device)
+        if self.lcm_init_a is not None:
+            a0 = torch.as_tensor(
+                self.lcm_init_a, dtype=torch.float64, device=self.lcm.a.device
+            )
+            if a0.shape != self.lcm.a.shape:
+                raise ValueError(
+                    f"lcm_init_a has shape {tuple(a0.shape)}, expected "
+                    f"{tuple(self.lcm.a.shape)} (one coordinate per parameter)"
+                )
+            with torch.no_grad():
+                self.lcm.a.copy_(a0)
+        self.lcm.a.requires_grad_(bool(self.lcm_learn_a))
         self.lcm_fit_error_ = self.lcm.fit_dense(
-            H, n_steps=self.lcm_steps, lr=self.lcm_lr
+            H, n_steps=self.lcm_steps, lr=self.lcm_lr, normalize=self.lcm_normalize
         )
         if self.lcm_fit_error_ > 0.5:
             warnings.warn(

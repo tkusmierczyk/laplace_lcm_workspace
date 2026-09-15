@@ -28,7 +28,7 @@ import torch
 from sklearn.datasets import fetch_openml
 
 import exp10_ordering as E
-from laplace.lcm import LCMCovariance
+import common as G  # GLM helpers live in the shared harness
 
 warnings.filterwarnings("ignore")
 torch.set_default_dtype(torch.float64)
@@ -65,33 +65,32 @@ def evaluate(Xtr, ytr, Xte, yte, name, prior=1.0, noise=None):
         noise = ytr.std().item() * 0.5
 
     GGN = Xtr.T @ Xtr / noise**2
-    H = GGN + prior * torch.eye(d)
-    Cov_full = torch.linalg.inv(H)
-    beta = Cov_full @ (Xtr.T @ ytr / noise**2)
-    mu_te = Xte @ beta
     rank = int(torch.linalg.matrix_rank(GGN))
+    w_map = G.glm_map_weights(Xtr, ytr, prior, noise)
+    # the wavelength / lag index IS the 1-D order, so supply it directly
+    order_a = torch.arange(d, dtype=torch.float64) * 0.3
 
-    covs = {
-        "full": Cov_full,
-        "diag": torch.diag(1.0 / (GGN.diagonal() + prior)),
-        "lcm_fixed": torch.linalg.inv(E.fit_fixed_order(GGN, torch.arange(d), steps=700)
-                                      + prior * torch.eye(d)),
+    las = {
+        "full": G.fit_glm(Xtr, ytr, "full", prior, noise, w_map=w_map),
+        "diag": G.fit_glm(Xtr, ytr, "diag", prior, noise, w_map=w_map),
+        "lcm_fixed": G.fit_glm(Xtr, ytr, "lcm", prior, noise, w_map=w_map,
+                               lcm_steps=700, lcm_lr=5e-2,
+                               lcm_init_a=order_a, lcm_learn_a=False),
+        "lcm_learned": G.fit_glm(Xtr, ytr, "lcm", prior, noise, w_map=w_map,
+                                 lcm_steps=700, lcm_lr=5e-2,
+                                 lcm_init_a=order_a, lcm_learn_a=True),
     }
-    lcm = LCMCovariance(d, dtype=torch.float64)
-    with torch.no_grad():
-        lcm.a.copy_(torch.arange(d, dtype=torch.float64) * 0.3)  # natural order init
-    lcm.fit_dense(GGN, n_steps=700, lr=5e-2)
-    covs["lcm_learned"] = torch.linalg.inv(lcm.dense() + prior * torch.eye(d))
 
     T = len(yte)
-    Inoise = noise**2 * torch.eye(T)
     out = {"data": name, "n_tr": Xtr.shape[0], "d": d, "rank": rank}
-    for nm, C in covs.items():
-        var = torch.einsum("ti,ij,tj->t", Xte, C, Xte) + noise**2
-        out[f"marg_{nm}"] = float((-0.5 * (torch.log(2 * np.pi * var) + (yte - mu_te) ** 2 / var)).mean())
-        Cj = Xte @ C @ Xte.T + Inoise
+    for nm, la in las.items():
+        mu_m, var = G.glm_marginal(la, Xte, noise)
+        out[f"marg_{nm}"] = float((-0.5 * (torch.log(2 * np.pi * var)
+                                           + (yte - mu_m) ** 2 / var)).mean())
+        mu_j, Cj = G.glm_joint(la, Xte, noise)
+        Cj = 0.5 * (Cj + Cj.T)
         L = torch.linalg.cholesky(Cj)
-        r = torch.linalg.solve_triangular(L, (yte - mu_te).unsqueeze(1), upper=False).squeeze(1)
+        r = torch.linalg.solve_triangular(L, (yte - mu_j).unsqueeze(1), upper=False).squeeze(1)
         out[f"joint_{nm}"] = float(-0.5 * (r @ r + 2 * torch.log(torch.diagonal(L)).sum()
                                            + T * np.log(2 * np.pi)) / T)
     return out

@@ -41,14 +41,15 @@ warnings.filterwarnings("ignore")
 torch.set_default_dtype(torch.float64)
 
 import exp10_ordering as E
-from exp15_ordering_fixes import joint_ll, seriation_coord, spearman
-from laplace.lcm import LCMCovariance
+import common as G  # GLM helpers live in the shared harness
+from exp15_ordering_fixes import joint_ll, spearman
 
 RESULTS = os.path.join(os.path.dirname(__file__), "results")
 os.makedirs(RESULTS, exist_ok=True)
 
 
 def _problem(d, seed, n, rho, ntest, noise, prior, permute=True):
+    """Data, references, and a gap() closure -- all posteriors via `laplace-torch`."""
     X, y, Xt, yt = E.simulate(n, d, rho, seed, ntest, noise)
     if permute:
         g = torch.Generator().manual_seed(1000 + seed)
@@ -57,40 +58,46 @@ def _problem(d, seed, n, rho, ntest, noise, prior, permute=True):
         true_c = perm.double()          # column j carries latent coordinate perm[j]
     else:
         true_c = torch.arange(d, dtype=torch.float64)
-    GGN = X.T @ X / noise**2
-    Cf = torch.linalg.inv(GGN + prior * torch.eye(d))
-    mu = Xt @ (Cf @ (X.T @ y / noise**2))
-    In = noise**2 * torch.eye(ntest)
 
-    def jl(C):
-        Cp = Xt @ C @ Xt.T + In
-        return joint_ll(mu, 0.5 * (Cp + Cp.T), yt)
+    w_map = G.glm_map_weights(X, y, prior, noise)
+    GGN = X.T @ X / noise**2            # only used to seed the seriation estimate
 
-    jf, jd = jl(Cf), jl(torch.diag(1.0 / (GGN.diagonal() + prior)))
+    def jl(la):
+        mu, Cj = G.glm_joint(la, Xt, noise)
+        return joint_ll(mu, 0.5 * (Cj + Cj.T), yt)
 
-    def gap(A):
-        return 100 * (jl(torch.linalg.inv(A + prior * torch.eye(d))) - jd) / (jf - jd)
+    jf = jl(G.fit_glm(X, y, "full", prior, noise, w_map=w_map))
+    jd = jl(G.fit_glm(X, y, "diag", prior, noise, w_map=w_map))
 
-    return GGN, true_c, gap
+    def gap(la):
+        return 100 * (jl(la) - jd) / (jf - jd)
+
+    return X, y, w_map, GGN, true_c, gap
 
 
-def _fit(d, GGN, normalise, a_init=None, freeze_a=False, steps=800, lr=5e-2):
-    s = GGN.diagonal().mean() if normalise else torch.tensor(1.0)
-    m = LCMCovariance(d, dtype=torch.float64)
-    with torch.no_grad():
-        m.a.copy_(a_init if a_init is not None else torch.linspace(0, d * 0.1, d))
-    if freeze_a:
-        m.a.requires_grad_(False)
-    m.fit_dense(GGN / s, n_steps=steps, lr=lr)
-    return m.dense().detach() * s, m.a.detach()
+def _fit(d, X, y, w_map, prior, sigma, normalise, a_init=None, freeze_a=False,
+         steps=800, lr=5e-2):
+    """One LCM posterior through the library.
+
+    `normalise=False` reproduces the pre-fix behaviour through the library's own
+    `lcm_normalize` switch, so the "as published" arms stay reproducible now that
+    `LCMCovariance` normalises by default. Orderings go through `lcm_init_a` /
+    `lcm_learn_a`, added to `LCMLaplace` for exactly this.
+    """
+    return G.fit_glm(
+        X, y, "lcm", prior, sigma, w_map=w_map,
+        lcm_steps=steps, lcm_lr=lr, lcm_normalize=normalise,
+        lcm_init_a=a_init if a_init is not None else torch.linspace(0, d * 0.1, d),
+        lcm_learn_a=not freeze_a,
+    )
 
 
 def part_a(d=800, n=3000, rho=0.9, ntest=400, noise=0.5, prior=1.0, seeds=(0, 1, 2)):
     print(f"=== A: Exp 10 protocol, one variable changed at a time (d={d}, permuted) ===")
     rows = []
     for seed in seeds:
-        GGN, true_c, gap = _problem(d, seed, n, rho, ntest, noise, prior)
-        seri = seriation_coord(GGN)
+        X, y, w_map, GGN, true_c, gap = _problem(d, seed, n, rho, ntest, noise, prior)
+        seri = G.seriation_coord(GGN) * 0.1
         variants = {
             "A_exp10_unnorm":       dict(normalise=False, a_init=None, freeze_a=False),
             "B_normalised":         dict(normalise=True,  a_init=None, freeze_a=False),
@@ -101,9 +108,9 @@ def part_a(d=800, n=3000, rho=0.9, ntest=400, noise=0.5, prior=1.0, seeds=(0, 1,
         }
         for name, kw in variants.items():
             torch.manual_seed(seed)
-            A, a_hat = _fit(d, GGN, **kw)
-            rows.append(dict(seed=seed, variant=name, gap=gap(A),
-                             recovery=abs(spearman(a_hat, true_c))))
+            la = _fit(d, X, y, w_map, prior, noise, **kw)
+            rows.append(dict(seed=seed, variant=name, gap=gap(la),
+                             recovery=abs(spearman(la.lcm.a.detach(), true_c))))
         print(f"  seed {seed}: " + "  ".join(
             f"{r['variant'].split('_')[0]}={r['gap']:.0f}%" for r in rows[-len(variants):]))
     df = pd.DataFrame(rows)
@@ -124,15 +131,17 @@ def part_b(d=400, n=3000, rho=0.9, ntest=400, noise=0.5, prior=1.0, seeds=(0, 1,
     for nz in noises:
         acc, gu, gn = [], [], []
         for seed in seeds:
-            GGN, _, gap = _problem(d, seed, n, rho, ntest, noise, prior, permute=False)
+            X, y, w_map, _, _, gap = _problem(d, seed, n, rho, ntest, noise, prior,
+                                              permute=False)
             g = torch.Generator().manual_seed(seed)
             c = torch.arange(d, dtype=torch.float64) + nz * torch.randn(d, generator=g)
             c = torch.argsort(torch.argsort(c)).double()
             acc.append(abs(spearman(c, torch.arange(d, dtype=torch.float64))))
             for norm, store in ((False, gu), (True, gn)):
                 torch.manual_seed(seed)
-                A, _ = _fit(d, GGN, normalise=norm, a_init=c * 0.1, freeze_a=True, steps=700)
-                store.append(gap(A))
+                la = _fit(d, X, y, w_map, prior, noise, normalise=norm,
+                          a_init=c * 0.1, freeze_a=True, steps=700)
+                store.append(gap(la))
         rows.append(dict(pos_noise=nz, spearman=np.mean(acc),
                          gap_unnorm=np.mean(gu), gap_norm=np.mean(gn)))
         print(f"  {nz:>9.1f} {np.mean(acc):>9.4f} {np.mean(gu):>11.1f}% {np.mean(gn):>11.1f}%")

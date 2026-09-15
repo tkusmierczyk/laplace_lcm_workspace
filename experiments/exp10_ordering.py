@@ -36,7 +36,7 @@ import pandas as pd
 import torch
 from scipy.stats import spearmanr
 
-from laplace.lcm import LCMCovariance, _inverse_softplus
+import common as G  # GLM helpers live in the shared harness
 
 warnings.filterwarnings("ignore")
 torch.set_default_dtype(torch.float64)
@@ -93,41 +93,30 @@ def fiedler_order(GGN):
     return torch.argsort(evecs[:, 1])  # order of positions -> original indices
 
 
-def fit_fixed_order(GGN, order, steps=800, lr=5e-2):
-    """Laplace-kernel precision with the permutation FROZEN to `order` (a_i = s * rank_i);
-    only the global spacing `s`, scales `w`, and nugget `d` are learned."""
+def fit_fixed_order(GGN, order, steps=800, lr=5e-2, X=None, y=None, prior=1.0,
+                    noise=0.5, w_map=None):
+    """LCM with the permutation FROZEN to `order`; only spacing/scales/nugget learn.
+
+    Now routed through `laplace-torch` (`lcm_init_a` + `lcm_learn_a=False`), so the
+    result describes the shipped `LCMLaplace`. `order` is "position -> index", so
+    the latent coordinate of variable i is its rank, i.e. argsort(order).
+    """
     d = GGN.shape[0]
     ranks = torch.empty(d, dtype=torch.float64)
-    ranks[order] = torch.arange(d, dtype=torch.float64)  # position of each variable
-    diag_est = GGN.diagonal().clamp(min=1e-12)
-    log_s = torch.zeros((), requires_grad=True)
-    w = torch.sqrt(0.85 * diag_est).clone().requires_grad_(True)
-    u = _inverse_softplus(0.15 * diag_est).clone().requires_grad_(True)
-    opt = torch.optim.Adam([log_s, w, u], lr=lr)
-    tnorm2 = (GGN**2).sum().clamp(min=1e-12)
-    for _ in range(steps):
-        opt.zero_grad()
-        a = log_s.exp() * ranks
-        K = torch.exp(-torch.abs(a[:, None] - a[None, :]))
-        A = torch.diag(torch.nn.functional.softplus(u) + EPS) + w[:, None] * K * w[None, :]
-        loss = ((A - GGN) ** 2).sum() / tnorm2
-        loss.backward()
-        opt.step()
-    with torch.no_grad():
-        a = log_s.exp() * ranks
-        K = torch.exp(-torch.abs(a[:, None] - a[None, :]))
-        A = torch.diag(torch.nn.functional.softplus(u) + EPS) + w[:, None] * K * w[None, :]
-    return A
+    ranks[order] = torch.arange(d, dtype=torch.float64)
+    return G.fit_glm(X, y, "lcm", prior, noise, w_map=w_map,
+                     lcm_steps=steps, lcm_lr=lr,
+                     lcm_init_a=ranks * 0.1, lcm_learn_a=False)
 
 
-def fit_learned(GGN, steps=800, lr=5e-2):
+def fit_learned(GGN, steps=800, lr=5e-2, X=None, y=None, prior=1.0, noise=0.5,
+                w_map=None):
     """LCM with the full latent coordinate learned from an uninformed init."""
     d = GGN.shape[0]
-    lcm = LCMCovariance(d, dtype=torch.float64)
-    with torch.no_grad():
-        lcm.a.copy_(torch.linspace(0.0, float(d) * 0.1, d))  # uninformed identity init
-    lcm.fit_dense(GGN, n_steps=steps, lr=lr)  # learns a, w, d (auto_init scales w/d)
-    return lcm.dense().detach(), lcm.a.detach()
+    return G.fit_glm(X, y, "lcm", prior, noise, w_map=w_map,
+                     lcm_steps=steps, lcm_lr=lr,
+                     lcm_init_a=torch.linspace(0.0, float(d) * 0.1, d),
+                     lcm_learn_a=True)
 
 
 # ----------------------------------------------------------------- one run
@@ -145,30 +134,28 @@ def run(d, seed, condition, n=3000, rho=0.9, ntest=400, noise=0.5, prior=1.0):
     else:
         true_order = torch.arange(d)
 
-    GGN = X.T @ X / noise**2
-    H = GGN + prior * torch.eye(d)
-    Cov_full = torch.linalg.inv(H)
-    mu_t = Xt @ (Cov_full @ (X.T @ y / noise**2))
-    Inoise = noise**2 * torch.eye(ntest)
+    GGN = X.T @ X / noise**2            # only used to seed the seriation estimate
+    w_map = G.glm_map_weights(X, y, prior, noise)
+    fk = dict(X=X, y=y, prior=prior, noise=noise, w_map=w_map)
 
-    def posterior_cov(A):
-        return torch.linalg.inv(A + prior * torch.eye(d))
-
-    covs = {"full": Cov_full,
-            "diag": torch.diag(1.0 / (GGN.diagonal() + prior)),
-            "lcm_fixed_nat": posterior_cov(fit_fixed_order(GGN, torch.arange(d))),
-            "lcm_fixed_seri": posterior_cov(fit_fixed_order(GGN, fiedler_order(GGN)))}
-    A_learned, a_learned = fit_learned(GGN)
-    covs["lcm_learned"] = posterior_cov(A_learned)
+    las = {
+        "full": G.fit_glm(X, y, "full", prior, noise, w_map=w_map),
+        "diag": G.fit_glm(X, y, "diag", prior, noise, w_map=w_map),
+        "lcm_fixed_nat": fit_fixed_order(GGN, torch.arange(d), **fk),
+        "lcm_fixed_seri": fit_fixed_order(GGN, fiedler_order(GGN), **fk),
+        "lcm_learned": fit_learned(GGN, **fk),
+    }
 
     out = {"d": d, "seed": seed, "condition": condition}
-    for name, C in covs.items():
-        Cj = Xt @ C @ Xt.T + Inoise
-        out[f"joint_{name}"] = joint_ll(mu_t, Cj, yt)
-        out[f"marg_{name}"] = marg_ll(mu_t, C, Xt, yt, noise)
+    for name, la in las.items():
+        mu_j, Cj = G.glm_joint(la, Xt, noise)
+        out[f"joint_{name}"] = joint_ll(mu_j, 0.5 * (Cj + Cj.T), yt)
+        mu_m, var = G.glm_marginal(la, Xt, noise)
+        out[f"marg_{name}"] = float((-0.5 * (torch.log(2 * np.pi * var)
+                                             + (yt - mu_m) ** 2 / var)).mean())
     # how well did learning recover the latent order?
     out["order_spearman"] = float(abs(spearmanr(
-        a_learned.cpu().numpy(),
+        las["lcm_learned"].lcm.a.detach().cpu().numpy(),
         true_order.double().cpu().numpy()).correlation))
     return out
 

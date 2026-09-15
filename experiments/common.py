@@ -222,3 +222,80 @@ def kl_gaussian(cov_a, cov_f):
 def frob_rel(A, B):
     A, B = A.double(), B.double()
     return float((A - B).norm() / B.norm())
+
+
+# ---------------------------------------------------------------- GLM helpers
+# Experiments 7-11 and 13-16 study Bayesian linear models. A GLM is just a
+# one-layer network, so `Laplace(nn.Linear(d, 1, bias=False), "regression", ...)`
+# handles it end to end -- there is no reason to hand-roll the posterior, and the
+# only reason those experiments originally did is that the first synthetic probe
+# was written that way and the rest copied it.
+#
+# These helpers exist only to (a) supply the exact MAP, which for a Gaussian GLM is
+# the closed-form ridge solution rather than something to reach by SGD, and (b)
+# expose the JOINT predictive, which the regime-A helpers above did not need.
+# Everything else routes straight into the library.
+
+
+def glm_map_weights(X, y, prior, sigma):
+    """Ridge MAP — the exact Laplace expansion point for a Gaussian GLM."""
+    d = X.shape[1]
+    GGN = X.T @ X / sigma**2
+    return torch.linalg.solve(GGN + prior * torch.eye(d, dtype=X.dtype), X.T @ y / sigma**2)
+
+
+def seriation_coord(GGN):
+    """Spectral (Fiedler) seriation of the |correlation| graph — an ordering
+    estimate when the 1-D order is unknown. Pass as `lcm_init_a`, then refine."""
+    dg = torch.sqrt(GGN.diagonal().clamp(min=1e-12))
+    Cr = (GGN / dg[:, None] / dg[None, :]).abs()
+    lap = torch.diag(Cr.sum(1)) - Cr
+    fied = torch.linalg.eigh(lap).eigenvectors[:, 1]
+    return torch.argsort(torch.argsort(fied)).to(GGN.dtype)
+
+
+def fit_glm(X, y, structure, prior, sigma, model=None, batch_size=256, w_map=None, **kw):
+    """Fit a `laplace-torch` posterior for a linear model.
+
+    Pass `model` to use an existing network (the usual case: train it, then hand it
+    over). If omitted, a `Linear(d, 1, bias=False)` is built and set to the exact
+    ridge MAP — the right expansion point for a GLM, and the reason these
+    experiments do not train anything.
+
+    `structure` is any `hessian_structure` the library accepts ("diag", "full",
+    "kron", "lcm"); extra kwargs (`lcm_steps`, `lcm_init_a`, `lcm_learn_a`, ...)
+    pass through untouched.
+    """
+    if model is None:
+        d = X.shape[1]
+        model = nn.Linear(d, 1, bias=False).to(X.dtype)
+        with torch.no_grad():
+            w = glm_map_weights(X, y, prior, sigma) if w_map is None else w_map
+            model.weight.copy_(w.unsqueeze(0))
+    ds = TensorDataset(X, y.unsqueeze(-1) if y.ndim == 1 else y)
+    la = Laplace(model, "regression", subset_of_weights="all",
+                 hessian_structure=structure, **kw)
+    la.fit(DataLoader(ds, batch_size=batch_size))
+    la.prior_precision = torch.as_tensor(prior, dtype=X.dtype)
+    la.sigma_noise = torch.as_tensor(sigma, dtype=X.dtype)
+    return la
+
+
+@torch.no_grad()
+def glm_marginal(la, Xt, sigma):
+    """Per-point predictive mean and total variance (library GLM predictive)."""
+    f_mu, f_var = la(Xt, pred_type="glm")
+    f_mu = f_mu.squeeze(-1)
+    return f_mu, f_var.reshape(f_mu.shape[0], -1)[:, 0] + sigma**2
+
+
+@torch.no_grad()
+def glm_joint(la, Xt, sigma):
+    """Joint predictive mean and covariance over a batch, via the library's own
+    `functional_covariance` (`Js P^-1 Js^T`) — the quantity meant for joint
+    prediction."""
+    f_mu, _ = la(Xt, pred_type="glm")
+    f_mu = f_mu.squeeze(-1)
+    Cov = la.functional_covariance(la.backend.jacobians(Xt)[0])
+    eye = torch.eye(Cov.shape[0], dtype=Cov.dtype, device=Cov.device)
+    return f_mu, Cov + sigma**2 * eye

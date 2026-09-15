@@ -17,7 +17,7 @@ import pandas as pd
 import torch
 
 import exp10_ordering as E  # reuse simulate()
-import glm_laplace as G       # library-backed posterior (see glm_laplace.py)
+import common as G  # GLM helpers live in the shared harness
 
 warnings.filterwarnings("ignore")
 torch.set_default_dtype(torch.float64)
@@ -44,7 +44,7 @@ def run(d, seed, n=3000, rho=0.9, ntest=400, noise=0.5, prior=1.0):
     differences, so the offset is irrelevant).
     """
     X, y, Xt, yt = E.simulate(n, d, rho, seed, ntest, noise)
-    w_map = G.map_weights(X, y, prior, noise)
+    w_map = G.glm_map_weights(X, y, prior, noise)
 
     las = {
         "diag": G.fit_glm(X, y, "diag", prior, noise, w_map=w_map),
@@ -56,10 +56,10 @@ def run(d, seed, n=3000, rho=0.9, ntest=400, noise=0.5, prior=1.0):
 
     out = {"d": d, "seed": seed}
     for nm, la in las.items():
-        mu_m, var = G.marginal(la, Xt, noise)
+        mu_m, var = G.glm_marginal(la, Xt, noise)
         out[f"marg_{nm}"] = float((-0.5 * (torch.log(2 * np.pi * var)
                                            + (yt - mu_m) ** 2 / var)).mean())
-        mu_j, Cj = G.joint(la, Xt, noise)
+        mu_j, Cj = G.glm_joint(la, Xt, noise)
         out[f"joint_{nm}"] = joint_ll(mu_j, 0.5 * (Cj + Cj.T), yt)
     out["gap_closed"] = ((out["joint_lcm"] - out["joint_diag"])
                          / (out["joint_full"] - out["joint_diag"] + 1e-12))

@@ -377,3 +377,65 @@ def test_fit_is_scale_equivariant_and_normalisation_helps():
     mf.fit_frobenius(X, n_steps=400, lr=5e-2)
     rel_f = float((mf.dense() - base).norm() / base.norm())
     assert rel_f < e1 + 0.05, f"matrix-free fit {rel_f} far from dense fit {e1}"
+
+
+def test_lcm_laplace_accepts_known_and_frozen_ordering():
+    """`lcm_init_a` / `lcm_learn_a` let LCMLaplace express the project's own
+    recommended recipe -- supply an ordering (known or seriated) and refine it.
+    Without them the class can only learn `a` from a linspace init, which Exp 10
+    showed cannot discover a latent order.
+    """
+    torch.manual_seed(0)
+    d, n, rho = 100, 600, 0.9
+    e = torch.randn(n, d, dtype=torch.float64)
+    X = torch.empty(n, d, dtype=torch.float64)
+    X[:, 0] = e[:, 0]
+    for j in range(1, d):
+        X[:, j] = rho * X[:, j - 1] + (1 - rho**2) ** 0.5 * e[:, j]
+    y = (X @ (torch.randn(d, dtype=torch.float64) * 0.2)
+         + 0.5 * torch.randn(n, dtype=torch.float64)).unsqueeze(1)
+    model = torch.nn.Linear(d, 1, bias=False).double()
+    dl = DataLoader(TensorDataset(X, y), batch_size=200)
+    true_a = torch.arange(d, dtype=torch.float64) * -math.log(rho)
+
+    def run(**kw):
+        la = Laplace(model, "regression", subset_of_weights="all",
+                     hessian_structure="lcm", lcm_steps=400, lcm_lr=5e-2, **kw)
+        la.fit(dl)
+        return la
+
+    frozen = run(lcm_init_a=true_a, lcm_learn_a=False)
+    assert torch.allclose(frozen.lcm.a.detach(), true_a), "frozen `a` must not move"
+    assert not frozen.lcm.a.requires_grad
+
+    refined = run(lcm_init_a=true_a, lcm_learn_a=True)
+    assert not torch.allclose(refined.lcm.a.detach(), true_a), "`a` should be refined"
+    assert refined.lcm_fit_error_ <= frozen.lcm_fit_error_ + 1e-6
+
+    # A wrong order is much worse than the right one.
+    wrong = run(lcm_init_a=true_a[torch.randperm(d)], lcm_learn_a=False)
+    assert wrong.lcm_fit_error_ > 3 * frozen.lcm_fit_error_
+
+    # Supplying the order only *helps* when the data is not already in it. The
+    # library's default init is `linspace(-1, 1, d) * scale`, which is monotone --
+    # i.e. it already encodes the natural order, and being learnable it can fix the
+    # spacing too. So the default is competitive on natural-order data and the
+    # comparison is only meaningful once the features are permuted.
+    perm = torch.randperm(d)
+    Xp = X[:, perm]
+    model_p = torch.nn.Linear(d, 1, bias=False).double()
+    dl_p = DataLoader(TensorDataset(Xp, y), batch_size=200)
+
+    def run_p(**kw):
+        la = Laplace(model_p, "regression", subset_of_weights="all",
+                     hessian_structure="lcm", lcm_steps=400, lcm_lr=5e-2, **kw)
+        la.fit(dl_p)
+        return la
+
+    # column j of Xp is original column perm[j], so its true coordinate is perm[j]
+    coord_p = true_a[perm]
+    assert run_p(lcm_init_a=coord_p, lcm_learn_a=False).lcm_fit_error_ < \
+        run_p().lcm_fit_error_, "a supplied ordering must beat the default on permuted data"
+
+    with pytest.raises(ValueError, match="lcm_init_a has shape"):
+        run(lcm_init_a=torch.zeros(d + 1, dtype=torch.float64))

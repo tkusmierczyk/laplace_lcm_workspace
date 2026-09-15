@@ -521,7 +521,10 @@ class LCMCovariance(nn.Module):
         tgt = target / scale
         if auto_init:
             self._auto_init_scale(tgt.diagonal())
-        opt = torch.optim.Adam([self.a, self.w, self.u_raw], lr=lr)
+        # only optimise what is trainable -- callers may freeze `a` to pin a known
+        # ordering and fit `w`/`d` alone (see LCMLaplace's `lcm_learn_a`).
+        params = [p for p in (self.a, self.w, self.u_raw) if p.requires_grad]
+        opt = torch.optim.Adam(params, lr=lr)
         prev = None
         for step in range(n_steps):
             opt.zero_grad()
@@ -600,7 +603,10 @@ class LCMCovariance(nn.Module):
         vectors = vectors / scale.sqrt()
         if auto_init:
             self._auto_init_scale((vectors**2).mean(dim=0))
-        opt = torch.optim.Adam([self.a, self.w, self.u_raw], lr=lr)
+        # only optimise what is trainable -- callers may freeze `a` to pin a known
+        # ordering and fit `w`/`d` alone (see LCMLaplace's `lcm_learn_a`).
+        params = [p for p in (self.a, self.w, self.u_raw) if p.requires_grad]
+        opt = torch.optim.Adam(params, lr=lr)
         last = float("nan")
         for step in range(n_steps):
             if batch_size is not None and batch_size < N:
