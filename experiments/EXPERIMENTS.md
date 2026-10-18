@@ -1741,6 +1741,133 @@ steps, which still spans the high-`D` regime the claim concerns.
 ---
 ---
 
+## Experiment 23 — the probe a temperature cannot fake (**the central open problem, solved**)
+
+`exp23_conditional_prediction.py` · `results/exp23_conditional.csv`
+
+Exps 17–21 left this project with one central open problem: **no probe separated
+off-diagonal structure from a correctly scaled diagonal.** Every metric tried was
+dominated by overall variance scale, and given one oracle scalar each, a diagonal matched
+or beat the exact posterior (Exp 18: diag 1.4107 vs full 1.4154). This experiment closes
+that problem, and the answer to "what would the right setting be?" turns out to be
+**conditional (transductive) prediction**.
+
+### Why marginal metrics were always going to fail
+
+A marginal predictive likelihood averages per-point variances, and Exp 17's trace identity
+pins their mean at `sigma^2 (1 + d/n)` *regardless of covariance structure*. Conditioning
+does not average. Reveal the labels of some test points and predict the rest:
+
+```
+mu_{Q|O} = mu_Q + t Sigma_QO (t Sigma_OO + sigma^2 I)^-1 (y_O - mu_O)
+```
+
+is driven entirely by the **off-diagonal block** `Sigma_QO`, and as `t -> infinity` it
+becomes `mu_Q + Sigma_QO Sigma_OO^-1 (y_O - mu_O)`, which is **exactly invariant to
+rescaling the posterior covariance**. A temperature cannot move it by construction, so any
+separation on that estimator is attributable to off-diagonal structure and nothing else.
+
+### Result — Bayesian linear model, d=128, n_train=60 (< d), sigma=0.3, 30 seeds
+
+20 test labels revealed, 20 queried. The generative prior precision and noise are handed
+to every arm, so `full` **is** the exact posterior — the gold standard, not a competitor.
+All numbers are RMSE on the queried block under the scale-invariant limit estimator.
+
+| `rho` | marginal (no conditioning) | full (exact) | LCM | diag | LCM vs diag (paired) | gap closed |
+|---|---|---|---|---|---|---|
+| 0.0 (control) | 8.1176 | 6.9586 | 7.5490 | 7.5449 | −0.0041 ± 0.0097 (**−0.4σ**) | — |
+| 0.5 | 7.1287 | 5.7920 | 6.5821 | 6.6067 | +0.0245 ± 0.0501 (0.5σ) | 3% |
+| 0.9 | 3.5223 | 2.6271 | 3.2141 | 3.7412 | +0.5270 ± 0.0879 (**6.0σ**) | **47%** |
+| 0.99 | 1.1835 | 0.9325 | 1.0655 | 1.3870 | +0.3215 ± 0.0484 (**6.6σ**) | **71%** |
+
+**The separation is real, scale-free and regime-dependent.** At `rho = 0` the chain and the
+diagonal are indistinguishable (−0.4σ) — the negative control passes, confirming the probe
+measures structure rather than something else. From `rho = 0.9` the chain captures about
+half the diagonal→exact gap, and 71% at `rho = 0.99`.
+
+The qualitative version is sharper still. Conditioning on revealed labels **improves** the
+exact posterior by 14–25%, and LCM inherits 7–10% of that, but with a diagonal posterior
+conditioning actively **hurts**:
+
+| `rho` | full | LCM | diag |
+|---|---|---|---|
+| 0.0 | +14.3% | +7.0% | +7.1% |
+| 0.5 | +18.8% | +7.7% | +7.3% |
+| 0.9 | +25.4% | +8.7% | **−6.2%** |
+| 0.99 | +21.2% | +10.0% | **−17.2%** |
+
+A diagonal posterior asked to transfer information between correlated test points transfers
+it in the wrong direction. This is the first predictive result in the project that a scalar
+temperature cannot reproduce — note the untempered conditional NLLs (26.9 for LCM, 32.6 for
+diag at `rho=0.9`, against 2.23 for full) are still catastrophic and still mostly fixed by
+the oracle scale (2.51 / 2.63 / 2.21), exactly as Exps 17–21 found. **Scale and structure
+are separate defects, and only conditional prediction sees the second one.**
+
+---
+---
+
+## Experiment 24 — off-diagonals as a *decision*: batch active learning
+
+`exp24_batch_acquisition.py` · `results/exp24_acquisition.csv`
+
+Exp 23 separated structure from scale on a *metric*. This asks the operational question:
+does posterior structure change **which points you choose to label**, and does that change
+downstream error? The score is test RMSE, so no calibration slack can rescue a bad choice,
+and the arms include the oracle-tempered diagonal that has beaten structure everywhere
+else in this project.
+
+The criterion is the predictive (V-optimal) one, because that is what matches the metric:
+labelling `x` cuts the predictive variance at a reference point `z` by
+`Sigma_zx^2/(Sigma_xx + sigma^2)`, so the greedy score sums that over a reference sample and
+each pick applies the exact rank-1 Bayesian downdate. **A first design used noise-free
+D-optimality** — which is *exactly* scale-invariant — **and it lost to random selection**,
+because maximising parameter-space volume buys atypical high-norm inputs rather than
+predictive accuracy. That is recorded rather than hidden: the criterion has to match the
+metric, and the scale-invariance then has to be tested rather than assumed.
+
+### Result — d=64, start 8 points, 5 rounds x 4 acquisitions, pool of 300 (5 copies per direction), 20 seeds
+
+Test RMSE at `n=28`, paired against selecting with the exact posterior (positive = worse):
+
+| selector | `rho`=0 (control) | `rho`=0.9 | `rho`=0.99 |
+|---|---|---|---|
+| full (exact) | — | — | — |
+| **LCM** | +0.3263 ± 0.0973 (3.4σ) | **+0.1843 ± 0.0805 (2.3σ, within noise)** | +0.0907 ± 0.0254 (3.6σ) |
+| diag | +0.5339 ± 0.0827 (6.5σ) | +1.0730 ± 0.1280 (8.4σ) | +0.4017 ± 0.0706 (5.7σ) |
+| **diag, oracle temperature** | +0.2946 ± 0.0828 (3.6σ) | **+0.6591 ± 0.1015 (6.5σ)** | +0.1686 ± 0.0375 (4.5σ) |
+| variance only (no off-diagonals) | +1.1085 ± 0.1134 (9.8σ) | +1.0008 ± 0.1183 (8.5σ) | +0.3243 ± 0.0514 (6.3σ) |
+| random (floor) | +0.1322 ± 0.1146 (1.2σ) | +0.3558 ± 0.0765 (4.7σ) | +0.1315 ± 0.0369 (3.6σ) |
+
+**The oracle temperature does not rescue the diagonal here.** It closes under 40% of its
+deficit and remains **6.5σ** worse than exact at `rho=0.9`, where LCM is statistically
+indistinguishable from the exact posterior. Head to head:
+
+| | `rho`=0 | `rho`=0.9 | `rho`=0.99 |
+|---|---|---|---|
+| tempered diag − LCM | −0.0317 ± 0.1064 (−0.3σ) | **+0.4748 ± 0.0883 (5.4σ)** | +0.0779 ± 0.0304 (2.6σ) |
+
+The control passes again: with `rho = 0` the chain and the tempered diagonal tie, and
+random selection matches the exact posterior (1.2σ) because there is little structure to
+exploit.
+
+Two further readings, both striking:
+
+- **Selecting with a diagonal posterior is worse than selecting at random**, at every
+  correlation level (random − diag: −0.40, −0.72, −0.27; −3.6σ, −5.6σ, −4.0σ). A diagonal
+  does not merely lose information, it actively misdirects the acquisition.
+- The **mechanism is visible**: mean |cosine| between acquired inputs at `rho=0.9` is
+  0.274 (full), 0.279 (LCM), 0.397 (diag), 0.415 (tempered diag), 0.374 (variance only).
+  Structure is what stops a batch from repeating itself; a temperature cannot supply it,
+  since scaling every variance leaves redundancy untouched.
+
+Note that `variance_only` is the only arm that ignores off-diagonals altogether — a
+diagonal *weight* posterior still induces a dense *function-space* covariance, so "diag"
+here means **wrong** correlations rather than none. Both failure modes are measurable, and
+they are not the same: ignoring them costs +1.00, getting them wrong costs +1.07.
+
+---
+---
+
 ## What could not be run on this machine
 
 Recorded so the gaps are not mistaken for negative results. The machine is an RTX 4060
