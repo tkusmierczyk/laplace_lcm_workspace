@@ -296,6 +296,10 @@ def glm_joint(la, Xt, sigma):
     prediction."""
     f_mu, _ = la(Xt, pred_type="glm")
     f_mu = f_mu.squeeze(-1)
-    Cov = la.functional_covariance(la.backend.jacobians(Xt)[0])
+    # NB: `backend.jacobians` differentiates w.r.t. the whole model and returns all
+    # zeros for a last-layer Laplace; `last_layer_jacobians` is the right call there.
+    Js = (la.backend.last_layer_jacobians(Xt) if la._key[0] == "last_layer"
+          else la.backend.jacobians(Xt))[0]
+    Cov = la.functional_covariance(Js)
     eye = torch.eye(Cov.shape[0], dtype=Cov.dtype, device=Cov.device)
     return f_mu, Cov + sigma**2 * eye

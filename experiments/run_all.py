@@ -32,6 +32,12 @@ EXPERIMENTS = [
     "experiments/exp14_lowrank.py",        # low-rank depth + large-d feasibility
     "experiments/exp15_ordering_fixes.py", # hybrid + annealing (annealing fails)
     "experiments/exp16_normalisation.py",  # corrects the Exp 10/10b negatives
+    "experiments/exp17_where_offdiagonals_matter.py",  # which queries expose off-diagonals
+    "experiments/exp18_kron_lcm.py",       # KFAC x LCM as a real posterior
+    "experiments/exp19_kron_lcm_scale.py", # feasibility frontier vs KFAC
+    "experiments/exp20_kron_lcm_real.py",  # real spectra, C=3; calibration control
+    "experiments/exp21_kron_lcm_cnn.py",   # learned feature maps are not chains
+    "experiments/exp22_reproduce_paper_claim.py",  # our port reproduces the paper
 ]
 
 # Diagnostics (print-only, no CSV): exp8_joint.py, ctrl_ordering.py,
