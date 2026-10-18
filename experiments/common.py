@@ -8,17 +8,25 @@ and posterior-fidelity KL / Frobenius to the exact full Laplace).
 """
 from __future__ import annotations
 
+import json
 import math
+import os
+import subprocess
+import sys
 import time
+from datetime import datetime
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
+import laplace
 from laplace import Laplace
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+HERE = os.path.dirname(os.path.abspath(__file__))
+RESULTS = os.path.join(HERE, "results")
 
 # Human-readable names and (subset, structure) for the Laplace factory.
 METHODS = {
@@ -34,6 +42,61 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+# ------------------------------------------------------------------ provenance
+def _git(path: str) -> dict | None:
+    """Short HEAD and dirty flag of the repository containing ``path``."""
+    try:
+        run = lambda *a: subprocess.run(  # noqa: E731
+            ["git", "-C", path, *a], capture_output=True, text=True, timeout=15
+        )
+        head = run("rev-parse", "--short", "HEAD")
+        if head.returncode:
+            return None
+        return {
+            "commit": head.stdout.strip(),
+            "dirty": bool(run("status", "--porcelain").stdout.strip()),
+        }
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def provenance(config: dict | None = None) -> dict:
+    """Everything needed to re-run this: both commits, versions, host, config.
+
+    The experiments and the laplace-torch fork are separate repositories, so both
+    hashes are recorded -- a result is only reproducible given the pair.
+    """
+    lib = os.path.dirname(os.path.dirname(os.path.abspath(laplace.__file__)))
+    return {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "experiments_git": _git(HERE),
+        "library_git": _git(lib),
+        "library_path": lib,
+        "host": os.uname().nodename,
+        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+        "argv": sys.argv,
+        "python": sys.version.split()[0],
+        "torch": torch.__version__,
+        "numpy": np.__version__,
+        "device": DEVICE,
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "threads": torch.get_num_threads(),
+        "dtype": str(torch.get_default_dtype()),
+        "config": dict(config or {}),
+    }
+
+
+def save_results(df, name: str, config: dict | None = None, results_dir: str | None = None) -> str:
+    """Write ``<name>.csv`` plus ``<name>.meta.json`` holding :func:`provenance`."""
+    d = results_dir or RESULTS
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, f"{name}.csv")
+    df.to_csv(path, index=False)
+    with open(os.path.join(d, f"{name}.meta.json"), "w") as f:
+        json.dump(provenance(config), f, indent=2, default=str)
+    return path
 
 
 # ------------------------------------------------------------------ data helpers
