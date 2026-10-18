@@ -137,3 +137,13 @@ state_dict.bin
 /temp
 
 .pdm-python
+
+# This repository is the laplace-torch fork: library code only. The project's
+# experiments, results and reports live in the outer repository
+# (/home/tom/prjs/laplace_bayes). Copies are kept here on disk for convenience
+# -- deliberately not symlinks -- but are not tracked here.
+experiments/
+AUDIT.md
+LCM_REPORT.html
+PROJECT_REPORT.md
+PUBLICATION_ASSESSMENT.md
