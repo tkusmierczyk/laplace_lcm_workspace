@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-10-18T22:47:49",
+  "experiments_git": {
+    "commit": "79dc2de",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "dcaffef",
+    "dirty": false
+  },
+  "library_path": "/home/tom/prjs/laplace_bayes/Laplace",
+  "host": "Dell-G15-5530",
+  "slurm_job_id": null,
+  "argv": [
+    "experiments/exp26_conditional_real.py",
+    "--seeds",
+    "3",
+    "--n-train",
+    "60",
+    "--threads",
+    "2",
+    "--tag",
+    "exp26_n60"
+  ],
+  "python": "3.13.5",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.2",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "threads": 2,
+  "dtype": "torch.float64",
+  "config": {
+    "settings": "spectra,cnn",
+    "seeds": 3,
+    "n_train": 60,
+    "threads": 2,
+    "tag": "exp26_n60",
+    "elapsed_s": 86.53636253904551
+  }
+}
