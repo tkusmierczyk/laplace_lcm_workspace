@@ -24,6 +24,10 @@ fi
 source .env/bin/activate
 
 export PIP_NO_CACHE_DIR=1
+# The NGC image configures an extra index (pypi.ngc.nvidia.com) that does not resolve from
+# the compute nodes, so pip burns five retries per package and anything PyPI-only fails.
+export PIP_INDEX_URL=https://pypi.org/simple
+export PIP_EXTRA_INDEX_URL=
 pip install --quiet --upgrade pip
 # Versions pinned to the laptop's, so a cluster result is comparable with a local one.
 # curvlinops 3.x moved `curvlinops._base`, which laplace/curvature/curvlinops.py imports,
@@ -65,7 +69,9 @@ print("provenance:", {k: v for k, v in common.provenance().items()
 PY
 
 echo "=== quota ==="
-quota -s 2>&1 | tail -2
+# `quota` is not installed on every compute node (absent on trzmiel), and this is a
+# diagnostic, not a requirement -- under `set -e` it would fail the whole job.
+quota -s 2>/dev/null | tail -2 || echo "(quota unavailable on $(hostname))"
 echo "=== venv size ==="
 du -sh "$PROJ/.env"
 echo "SETUP OK"

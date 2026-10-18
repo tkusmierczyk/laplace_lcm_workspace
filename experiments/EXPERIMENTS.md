@@ -1940,6 +1940,114 @@ diagnostics predicted this, and they were right.
 ---
 ---
 
+## Experiment 25 — the paper's claim against a baseline that can fight back
+
+`exp25_paper_scale_baselines.py`, `exp25_verify_moments.py` · `results/exp25_local.csv`,
+`results/exp25_verify.csv`
+
+Exp 22 reproduced Figure 4 but inherited the paper's **only** baseline, a diagonal. A
+diagonal losing shows that *some* correlation helps, not that a **chain** is the right
+correlation. Five further families, on held-out feature NLL (CIFAR-10, N=1200, 3 seeds,
+this laptop; the cluster run extends `D` to the paper's ~2e5):
+
+| D | diag (1D) | **lcm_moments (3D)** | lcm_frob (3D, paper's objective) | lcm_ml (3D) | fixed_a (2D) | fa_r2 (3D, matched) | fa_r3 (4D) |
+|---|---|---|---|---|---|---|---|
+| 4 096 | 3623.8 ± 44 | **729.8 ± 282** | 2403.7 ± 50 | 2445.3 ± 47 | 2415.4 ± 59 | 2993.1 ± 62 | 2842.5 ± 64 |
+| 16 373 | 11995.4 ± 342 | **1636.2 ± 722** | 9064.8 ± 190 | — | 8624.8 ± 274 | 9672.9 ± 358 | 9170.7 ± 294 |
+| 65 533 | 59374.4 ± 937 | **−1666.1 ± 2730** | 44166.8 ± 713 | — | 42334.7 ± 658 | 46953.2 ± 839 | 44250.7 ± 718 |
+
+Four readings, in order of importance.
+
+1. **The structure choice is vindicated.** A chain beats factor analysis at **matched
+   parameter count** (3D) at every width, and beats rank 3 (4D) too. The paper's family is
+   not merely better than a diagonal; it is better than the natural low-rank competitor on
+   the same budget. (Exp 14 had found the opposite on *network curvature* in this project's
+   precision transplant — so that negative was about the transplant, like the others.)
+2. **The paper's fitting rule is leaving a factor of 3–25× on the table.** `lcm_moments` —
+   our closed-form three-band estimator — beats the Frobenius fit of the *same family* by
+   3.3× at D=4096, 5.5× at 16 373, and by 45 833 nats at 65 533. It is also **30–1200×
+   faster**: 0.3 s / 1.9 s / 13.4 s against 10.4 s / 59.3 s / 378.5 s. `||A - S||_F^2`
+   weights large eigenvalues and is nearly blind to the small ones that dominate a log-det,
+   which is exactly what a likelihood cares about.
+3. **Learned coordinates still buy nothing.** Freezing them at equal spacing (2D) matches
+   or beats the full 3D Frobenius fit at every width (8624.8 vs 9064.8; 42334.7 vs
+   44166.8), consistent with Exps 10/16.
+4. **Fitting the family by exact likelihood does not help either** (2445.3 vs 2403.7) and
+   costs 8× more (78.1 s vs 10.4 s), so the Frobenius arm was not merely being scored on a
+   foreign objective — gradient fitting of *any* objective is the weak part, not the loss.
+
+### The verification, because these numbers are extreme
+
+A negative NLL and a log-det of −202 146 are exactly the kind of result that turned out to
+be a bug twice in this project, so `exp25_verify_moments.py` checks them independently:
+
+| D | min innovation variance | log-det, two O(D) implementations | solve residual | **quad / dim** | vs dense Cholesky |
+|---|---|---|---|---|---|
+| 4 096 | 1.848e-03 | agree to 0.00e+00 | 7.67e-12 | 1.3266 | log-det **3.11e-10**, quad **3.10e-07** |
+| 16 384 | 5.044e-04 | agree to 0.00e+00 | 6.65e-14 | 1.0519 | log-det **1.46e-10**, quad **1.42e-10** |
+| 65 529 | 4.040e-05 | agree to 0.00e+00 | 1.25e-13 | 1.0541 | dense impossible (32 GiB) |
+
+Positive definite at every width, two independent log-det implementations agreeing exactly,
+and — the decisive number — **quad/dim ≈ 1.05**, meaning the fitted covariance explains
+*held-out* data at the right scale. The very negative log-dets are legitimately tight
+fits, not degeneracy.
+
+One methodological note: the first large-`D` output of this experiment was wrong in the
+diagonal's favour by 35.8 nats/dim, because each family clamped its diagonal at a different
+floor and a ReLU map has near-dead units (7 of 65 536 below 1e-6 × median variance, one
+exactly zero). Degenerate dimensions are now dropped and every family gets one shared,
+reported floor. Before the fix, factor analysis appeared to win.
+
+---
+---
+
+## Experiment 27 — the paper's actual use case: do the *samples* have the right structure?
+
+`exp27_sample_structure.py` · `results/exp27_sample_structure.csv`
+
+REMIX does not use its covariance to predict. It **samples** from it, to invert a network
+and manufacture replay data. That makes sampling the claim worth testing, and it is a pure
+structure probe: correlations are normalised, so **no temperature can give a diagonal the
+right spatial structure**. In a flattened `C x H x W` map the lags mean something — lag 1 is
+the next pixel in a row, lag 32 the pixel above, lag 1024 the next channel.
+
+Mean correlation of 512 samples at each lag, against held-out features (3 seeds):
+
+| family | lag 1 | lag 2 | lag 4 | lag 32 (row above) | lag 1024 (next channel) | profile error |
+|---|---|---|---|---|---|---|
+| **held-out truth** | 0.854 | 0.753 | 0.655 | 0.841 | 0.199 | — |
+| diag (1D) | 0.000 | −0.000 | 0.000 | 0.000 | 0.000 | 0.6604 ± 0.031 |
+| **lcm_moments (3D)** | **0.851** | **0.767** | **0.643** | 0.143 | 0.000 | **0.1871 ± 0.021** |
+| lcm_moments, Hilbert order (3D) | 0.659 | 0.444 | 0.195 | **0.658** | −0.001 | 0.2694 ± 0.017 |
+| lcm_frob (3D) | 0.444 | 0.437 | 0.432 | 0.433 | 0.108 | 0.2896 ± 0.016 |
+| fa_r3 (4D) | 0.410 | 0.408 | 0.406 | 0.401 | 0.095 | 0.3164 ± 0.011 |
+| fa_r2 (3D) | 0.347 | 0.345 | 0.345 | 0.340 | 0.085 | 0.3679 ± 0.005 |
+
+(D = 16 382; layer 1 at D = 4096 is the same ordering, `lcm_moments` 0.1988 ± 0.019 best.)
+
+**The chain is the only cheap family that reproduces *local* structure.** It tracks the
+true decay 0.854 → 0.753 → 0.655 almost exactly. Low-rank cannot: factor analysis produces
+a **flat** profile (0.347 at every lag), i.e. one global correlation, and the diagonal
+produces white noise at any scale, as predicted.
+
+**Why the Frobenius fit loses, mechanically.** `lcm_frob` is also flat (0.444 everywhere) —
+it fits the same global component low-rank does. The fitted coordinate span says why:
+**3.1 for Frobenius against 3630 for moments**. A narrow span makes `exp(-|a_p - a_q|)`
+nearly constant for all pairs, so the chain degenerates into "everything equally
+correlated". This is the same defect that costs it 3–25× in Exp 25, seen directly.
+
+**The chain's one failure is dimensional, and fixable.** It gets lag 1 right and lag 32
+(equally strong in truth, 0.841) wrong at 0.143, because a 1-D chain on a row-major map can
+follow only one adjacency direction. Walking a **Hilbert curve** instead — a free
+permutation — lifts lag 32 from 0.143 to **0.658** while costing lag 2 and lag 4
+(0.767 → 0.444, 0.643 → 0.195). Average profile error is worse (0.2694 vs 0.1871), so it is
+a trade rather than a win on this metric, but it is the only arm that reproduces both
+adjacency directions at all, and which one matters depends on the downstream use. No family
+reproduces the cross-channel correlation (truth 0.199).
+
+---
+---
+
 ## Gap register
 
 What is settled, what is in flight, and what was identified and deliberately not run.
