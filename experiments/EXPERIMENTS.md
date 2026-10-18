@@ -1875,7 +1875,7 @@ Laptop (7.6 GiB) with 31 GiB RAM.
 
 | Wanted | Blocker |
 |---|---|
-| Library `lowrank` baseline (`LowRankLaplace`) | `eig_lowrank` exists only in the `asdfghjkl` backend, which is **not installed**. A dependency, not hardware — installable on request. Exp 13/14 compared low-rank *factors* with their own code, so the gap is in the library-based comparison only |
+| Library `lowrank` baseline (`LowRankLaplace`) | **Upstream-broken, not a missing install** (diagnosed 2026-10-19). The distribution `asdfghjkl==0.1a4` that `pyproject.toml` pins installs a module named **`asdl`** (`top_level.txt`), and *is* already present in this anaconda base — so the long-standing "not installed" note was wrong. But `LowRankLaplace` needs `AsdfghjklHessian.eig_lowrank` (`laplace/curvature/asdfghjkl.py:212`), whose module-level import requires `COV`, `fisher_for_cross_entropy`, `hessian_for_loss` and `hessian_eigenvalues` — none of which 0.1a4's renamed API provides, while `asdfghjkl` itself is no longer resolvable on PyPI. The modern `AsdlHessian` imports cleanly but has no `eig_lowrank`. So upstream pins a version incompatible with its own import, on any machine. Routes: an archived pre-rename release, or implement `eig_lowrank` ourselves (top-k eigenpairs of the GGN via Lanczos/`torch.lobpcg`, ~40 lines on the existing curvature interface). Exp 13/14 compared low-rank *factors* with their own code, so the gap is in the library-based comparison only |
 | Exact `full` Laplace beyond ~i=2048 | measured in Exp 19: 3.1 GiB at i=2048 with C=10, **50 GiB at i=8192**. So above a few thousand inputs Kron-LCM cannot be scored against exact Full at all — only against KFAC |
 | Dense KFAC factors at i >= 32 768 | measured: `i^2` float64 is 0.5 GiB at i=8192, **8 GiB at i=32 768**, **32 GiB at i=65 536** (more than this machine's RAM). Kron-LCM runs there in 0.188 s / 1.5 MiB, so above ~30k inputs there is no baseline to compare against on this hardware |
 | Real wide architectures (ResNet/ViT last layers, transformer MLPs) | a 2048→1000 head is fine for KFAC but `Full` is out of reach on any machine; large-scale KFAC-vs-Kron-LCM comparisons need more than 7.6 GiB of VRAM |
@@ -2069,7 +2069,7 @@ Kept here so that "not done" is never mistaken for "does not work".
 |---|---|
 | Exp 25 at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | `cluster/exp25.sbatch` written, code rsynced to the cluster, environment built inside `pytorch_24.12-py3.sif` except a `curvlinops` pin (3.x moved `curvlinops._base`, which the fork imports — now pinned to the laptop's 2.0.1). **Blocked: the gateway began refusing the SSH key mid-session**, after the setup job had already run |
 | Exp 25 locally at `D` up to 65536, 3 seeds | running on this laptop (CPU, float64), the local complement of the cluster run |
-| Library `lowrank` baseline | `asdfghjkl` install in the cluster venv failed; the reason was hidden by `pip --quiet`, since fixed. Still the one library baseline that has never run |
+| ~~Library `lowrank` baseline~~ | **Closed, negatively** — see the table above. Not an install problem: upstream pins `asdfghjkl==0.1a4`, which renamed its module to `asdl` and dropped the four functions `AsdfghjklHessian` imports. Unblocking it means writing `eig_lowrank` ourselves |
 
 ### Promising, identified, not run
 
