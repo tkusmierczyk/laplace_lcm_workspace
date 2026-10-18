@@ -23,6 +23,9 @@ class HessianStructure(str, Enum):
     KRON = "kron"
     """Kronecker-factored Hessian (preferrable)."""
 
+    KRON_LCM = "kron_lcm"
+    """Kronecker-factored Hessian whose large factor is an LCM chain (ordered inputs)."""
+
     DIAG = "diag"
     """Diagonal Hessian."""
 

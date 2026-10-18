@@ -28,7 +28,8 @@ from laplace.utils.enums import (
     PriorStructure,
     TuningMethod,
 )
-from laplace.utils.matrix import Kron, KronDecomposed
+from laplace.lcm import LCMCovariance, _inverse_softplus
+from laplace.utils.matrix import Kron, KronDecomposed, KronLCMDecomposed
 from laplace.utils.metrics import RunningNLLMetric
 from laplace.utils.utils import (
     fix_prior_prec_structure,
@@ -1926,7 +1927,7 @@ class KronLaplace(ParametricLaplace):
             self.H_facs += self.H
 
         # Decompose to self.H for all required quantities but keep H_facs for further inference
-        self.H = self.H_facs.decompose(damping=self.damping)
+        self.H = self._decompose(self.H_facs)
 
     @property
     def posterior_precision(self) -> KronDecomposed:
@@ -1984,6 +1985,11 @@ class KronLaplace(ParametricLaplace):
         if len(self.prior_precision) not in [1, self.n_layers]:
             raise ValueError("Prior precision for Kron either scalar or per-layer.")
 
+    def _decompose(self, H_facs: Kron) -> KronDecomposed:
+        """Turn the accumulated Kronecker factors into a precision object. Overridden by
+        subclasses that use a structured representation of the factors."""
+        return H_facs.decompose(damping=self.damping)
+
     def state_dict(self) -> dict[str, Any]:
         state_dict = super().state_dict()
         assert isinstance(self.H_facs, Kron)
@@ -1996,7 +2002,158 @@ class KronLaplace(ParametricLaplace):
         assert isinstance(self.H, Kron)
         self.H_facs = self.H
         self.H_facs.kfacs = state_dict["H"]
-        self.H = self.H_facs.decompose(damping=self.damping)
+        self.H = self._decompose(self.H_facs)
+
+
+class KronLCMLaplace(KronLaplace):
+    """Kronecker-factored Laplace whose large Kronecker factor is kept in the LCM family.
+
+    Identical to `KronLaplace` -- same curvature backend, same accumulation of Kronecker
+    factors -- except for how the factors are turned into a precision: instead of
+    eigendecomposing both factors, only the small one is eigendecomposed and the large one
+    is represented as `laplace.lcm.LCMCovariance`. The one-factor eigen reduction then
+    splits the posterior precision into `n_small` independent LCM blocks, each with an
+    \\(O(\\mathrm{in})\\) solve and log-determinant; see
+    `laplace.utils.matrix.KronLCMDecomposed`.
+
+    Two consequences worth stating. Storage per layer drops from
+    \\(\\mathrm{in}^2 + \\mathrm{out}^2\\) to \\(3\\,\\mathrm{in} + \\mathrm{out}^2\\),
+    and the prior is added **exactly** rather than through the factored-damping
+    approximation that `KronLaplace(damping=True)` needs. The cost is the modelling
+    assumption that the large factor is a 1-D exponentially-correlated chain, which holds
+    for physically ordered inputs (spectra, time series, feature-map positions) and fails
+    for permutation-symmetric ones (hidden units); `lcm_layers` lets the two be mixed in
+    one model.
+
+    Parameters
+    ----------
+    lcm_layers : list[int] or None, default=None
+        which layers to structure; `None` structures every 2-factor layer. Unlisted
+        layers keep the exact dense eigendecomposition.
+    lcm_side : {'auto', 'in', 'out'}, default='auto'
+        which factor carries the chain; 'auto' picks the larger.
+    lcm_order : {'natural', 'seriate'} or list, default='natural'
+        ordering of the chain axis. 'natural' assumes the inputs are already ordered;
+        'seriate' recovers an order from the factor with no side information.
+    lcm_method : {'moments', 'dense', 'frobenius'}, default='moments'
+        'moments' is the closed-form three-band estimator -- no optimiser to tune.
+    lcm_fit_kwargs : dict or None
+        extra arguments forwarded to the fit.
+    """
+
+    _key = ("all", "kron_lcm")
+
+    def __init__(
+        self,
+        model: nn.Module,
+        likelihood: Likelihood | str,
+        sigma_noise: float | torch.Tensor = 1.0,
+        prior_precision: float | torch.Tensor = 1.0,
+        prior_mean: float | torch.Tensor = 0.0,
+        temperature: float = 1.0,
+        enable_backprop: bool = False,
+        dict_key_x: str = "input_ids",
+        dict_key_y: str = "labels",
+        backend: type[CurvatureInterface] | None = None,
+        damping: bool = False,
+        backend_kwargs: dict[str, Any] | None = None,
+        asdl_fisher_kwargs: dict[str, Any] | None = None,
+        lcm_layers: list[int] | None = None,
+        lcm_side: str = "auto",
+        lcm_order: str | list = "natural",
+        lcm_method: str = "moments",
+        lcm_fit_kwargs: dict[str, Any] | None = None,
+    ):
+        self.lcm_layers = lcm_layers
+        self.lcm_side = lcm_side
+        self.lcm_order = lcm_order
+        self.lcm_method = lcm_method
+        self.lcm_fit_kwargs = lcm_fit_kwargs or {}
+        super().__init__(
+            model,
+            likelihood,
+            sigma_noise,
+            prior_precision,
+            prior_mean,
+            temperature,
+            enable_backprop,
+            dict_key_x,
+            dict_key_y,
+            backend,
+            damping,
+            backend_kwargs,
+            asdl_fisher_kwargs,
+        )
+
+    def _decompose(self, H_facs: Kron) -> KronLCMDecomposed:
+        if self.damping:
+            raise ValueError(
+                "damping is not applicable to kron_lcm: the reduction adds the prior "
+                "exactly, which is what factored damping approximates."
+            )
+        return KronLCMDecomposed.from_kron(
+            H_facs,
+            lcm_layers=self.lcm_layers,
+            lcm_side=self.lcm_side,
+            order=self.lcm_order,
+            method=self.lcm_method,
+            fit_kwargs=self.lcm_fit_kwargs,
+        )
+
+    @property
+    def posterior_precision(self) -> KronLCMDecomposed:
+        """Structured Kronecker-factored posterior precision.
+
+        Returns
+        -------
+        precision : `laplace.utils.matrix.KronLCMDecomposed`
+        """
+        self._check_H_init()
+        return self.H * self._H_factor + self.prior_precision
+
+    def sample(
+        self, n_samples: int = 100, generator: torch.Generator | None = None
+    ) -> torch.Tensor:
+        """Posterior samples by perturb-and-solve.
+
+        An LCM block \\(B = \\gamma_j H_l + \\delta I\\) has no closed-form square root,
+        so `bmm(exponent=-0.5)` is unavailable. Instead draw \\(\\eta \\sim N(0, B)\\) --
+        which the state-space form does directly in \\(O(\\mathrm{in})\\) -- and solve:
+        \\(B^{-1}\\eta \\sim N(0, B^{-1})\\), the required posterior covariance.
+        """
+        P = self.posterior_precision
+        eta = torch.empty(
+            n_samples, self.n_params, device=self._device, dtype=self._dtype
+        )
+        cur_p = 0
+        for b, delta in zip(P.blocks, P._deltas_list()):
+            if b["kind"] == "dense":
+                ls = b["ls"]
+                p = len(ls[0]) if len(ls) == 1 else len(ls[0]) * len(ls[1])
+                z = torch.randn(n_samples, p, device=self._device, dtype=self._dtype,
+                                generator=generator)
+                blk = KronDecomposed([b["Qs"]], [b["ls"]],
+                                     delta.reshape(1), damping=False) * P.scale
+                eta[:, cur_p : cur_p + p] = blk.bmm(z, exponent=0.5).reshape(n_samples, p)
+                cur_p += p
+            else:
+                ns, nl = b["n_small"], b["n_large"]
+                S = torch.empty(n_samples, ns, nl, device=self._device, dtype=self._dtype)
+                for j in range(ns):
+                    a, w, d = P._block_params(b, j, delta)
+                    lcm_j = LCMCovariance(nl, dtype=self._dtype).to(self._device)
+                    with torch.no_grad():
+                        lcm_j.a.copy_(a)
+                        lcm_j.w.copy_(w)
+                        lcm_j.u_raw.copy_(_inverse_softplus((d - lcm_j.eps).clamp(min=1e-12)))
+                    S[:, j, :] = lcm_j.sample(n_samples, generator=generator)
+                S = torch.einsum("js,bsl->bjl", b["Q"], S)
+                if b["transpose"]:
+                    S = S.transpose(-1, -2)
+                eta[:, cur_p : cur_p + ns * nl] = S.reshape(n_samples, ns * nl)
+                cur_p += ns * nl
+        samples = P.bmm(eta, exponent=-1).reshape(n_samples, self.n_params)
+        return self.mean.reshape(1, self.n_params) + samples
 
 
 class LowRankLaplace(ParametricLaplace):

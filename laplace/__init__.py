@@ -13,6 +13,7 @@ from laplace.baselaplace import (
     FullLaplace,
     FunctionalLaplace,
     KronLaplace,
+    KronLCMLaplace,
     LCMLaplace,
     LowRankLaplace,
     ParametricLaplace,
@@ -24,6 +25,7 @@ from laplace.lllaplace import (
     FullLLLaplace,
     FunctionalLLLaplace,
     KronLLLaplace,
+    KronLCMLLLaplace,
     LCMLLLaplace,
     LLLaplace,
 )
@@ -45,6 +47,7 @@ __all__ = [
     "ParametricLaplace",  # base-class and its (first-level) subclasses
     "FullLaplace",
     "KronLaplace",
+    "KronLCMLaplace",
     "DiagLaplace",
     "FunctionalLaplace",
     "LowRankLaplace",
@@ -53,6 +56,7 @@ __all__ = [
     "LLLaplace",  # base-class last-layer
     "FullLLLaplace",
     "KronLLLaplace",
+    "KronLCMLLLaplace",
     "DiagLLLaplace",
     "LCMLLLaplace",
     "FunctionalLLLaplace",  # last-layer

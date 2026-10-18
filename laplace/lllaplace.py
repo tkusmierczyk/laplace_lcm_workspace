@@ -10,6 +10,7 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from torch.utils.data import DataLoader
 
 from laplace.baselaplace import (
+    KronLCMLaplace,
     DiagLaplace,
     FullLaplace,
     FunctionalLaplace,
@@ -473,7 +474,6 @@ class KronLLLaplace(LLLaplace, KronLaplace):
         backend_kwargs: dict[str, Any] | None = None,
         asdl_fisher_kwargs: dict[str, Any] | None = None,
     ):
-        self.damping = damping
         super().__init__(
             model,
             likelihood,
@@ -490,6 +490,10 @@ class KronLLLaplace(LLLaplace, KronLaplace):
             backend_kwargs,
             asdl_fisher_kwargs,
         )
+        # Assigned *after* the super call: `KronLaplace.__init__` comes later in the MRO
+        # and would otherwise reset this to its own default, silently discarding
+        # `damping=True` passed here.
+        self.damping = damping
 
     def _init_H(self) -> None:
         self.H = Kron.init_from_model(self.model.last_layer, self._device, self._dtype)
@@ -533,6 +537,70 @@ class KronLLLaplace(LLLaplace, KronLaplace):
             f_var += Sigma_bias.reshape(1, num_classes)
 
         return f_mu, f_var
+
+
+class KronLCMLLLaplace(LLLaplace, KronLCMLaplace):
+    """Last-layer Kronecker-factored Laplace with an LCM input factor.
+
+    The natural home of the construction: the last layer's input factor is the covariance
+    of the penultimate features, which for ordered inputs (a spectrum, a time series, the
+    positions of a 1-D feature map) is a smooth 1-D chain. See `KronLCMLaplace` for the
+    reduction and `laplace.utils.matrix.KronLCMDecomposed` for the representation.
+    """
+
+    _key = ("last_layer", "kron_lcm")
+
+    def __init__(
+        self,
+        model: nn.Module,
+        likelihood: Likelihood | str,
+        sigma_noise: float | torch.Tensor = 1.0,
+        prior_precision: float | torch.Tensor = 1.0,
+        prior_mean: float | torch.Tensor = 0.0,
+        temperature: float = 1.0,
+        enable_backprop: bool = False,
+        feature_reduction: FeatureReduction | str | None = None,
+        dict_key_x: str = "input_ids",
+        dict_key_y: str = "labels",
+        backend: type[CurvatureInterface] | None = None,
+        last_layer_name: str | None = None,
+        damping: bool = False,
+        backend_kwargs: dict[str, Any] | None = None,
+        asdl_fisher_kwargs: dict[str, Any] | None = None,
+        lcm_layers: list[int] | None = None,
+        lcm_side: str = "auto",
+        lcm_order: str | list = "natural",
+        lcm_method: str = "moments",
+        lcm_fit_kwargs: dict[str, Any] | None = None,
+    ):
+        LLLaplace.__init__(
+            self,
+            model,
+            likelihood,
+            sigma_noise,
+            prior_precision,
+            prior_mean,
+            temperature,
+            enable_backprop,
+            feature_reduction,
+            dict_key_x,
+            dict_key_y,
+            backend,
+            last_layer_name,
+            backend_kwargs,
+            asdl_fisher_kwargs,
+        )
+        # see the note in `KronLLLaplace.__init__`: these must be set after the super
+        # call, which runs `KronLCMLaplace.__init__` and would reset them to its defaults
+        self.damping = damping
+        self.lcm_layers = lcm_layers
+        self.lcm_side = lcm_side
+        self.lcm_order = lcm_order
+        self.lcm_method = lcm_method
+        self.lcm_fit_kwargs = lcm_fit_kwargs or {}
+
+    def _init_H(self) -> None:
+        self.H = Kron.init_from_model(self.model.last_layer, self._device, self._dtype)
 
 
 class DiagLLLaplace(LLLaplace, DiagLaplace):
