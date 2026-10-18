@@ -30,9 +30,9 @@ generic NN-weight curvature (Exp 4a plateau at 0.66 rel-Frobenius), because a
 layer's GGN is **Kronecker**-structured, which is KFAC's home.
 
 **Phase 2 (Exp 5–11) — the reframing.** Every Phase-1 negative used a **marginal**
-metric (per-point NLL, ECE, single-point OOD), and marginal predictive
-uncertainty is nearly insensitive to off-diagonal covariance — precisely what LCM
-adds. Switching to **joint** predictive likelihood over a batch exposed a real
+metric evaluated on **in-distribution** test points, where a trace identity pins
+the mean predictive variance regardless of covariance structure (Exp 17) — so no
+per-point metric could separate the methods there. Switching to **joint** predictive likelihood over a batch exposed a real
 advantage (Exp 8c: **87%/84%/64%** of the diagonal→full gap closed at
 d=500/1000/1500, 10 seeds, through the library), confirmed on real ordered data
 (Exp 11, Tecator NIR: ~100%). The
@@ -136,6 +136,12 @@ worse than diagonal.
 | 14 | `exp14_lowrank.py` | Low-rank in depth; behaviour at very large `d` | **matched fit ≠ matched prediction** |
 | 15 | `exp15_ordering_fixes.py` | Hybrid LCM+low-rank; nugget annealing | hybrid weak +, annealing **fails** |
 | 16 | `exp16_normalisation.py` | Were the ordering negatives a fitting artifact? | **yes — overturns Exp 10/10b** |
+| 17 | `exp17_where_offdiagonals_matter.py` | Which queries make off-diagonal covariance matter? | **none found — shift measures variance scale, not structure** |
+| 18 | `exp18_kron_lcm.py` | Does KFAC x LCM work as a posterior? | **yes — ties KFAC on 80x less storage; but see the scale control** |
+| 19 | `exp19_kron_lcm_scale.py` | Where can Kron-LCM be built and KFAC not? | **i>=32k: 1.5 MiB vs 32 GiB at i=65k** |
+| 20 | `exp20_kron_lcm_real.py` | Kron-LCM on real spectra, C=3 | **shift win is calibration, not structure; seriation exact** |
+| 21 | `exp21_kron_lcm_cnn.py` | Are *learned* feature maps chain-structured? | **no — effective rank 1.75 of 368; chain closes nothing** |
+| 22 | `exp22_reproduce_paper_claim.py` | Does our code reproduce the paper's own claim? | **yes — LCM beats diagonal at every layer** |
 
 Supporting diagnostics: `ctrl_ordering.py` (frozen-order control),
 `diag_matfree_init.py` (matrix-free fit initialization).
@@ -663,7 +669,8 @@ LCM adds?
 ## Experiment 8 / 8b / 8c — Marginal vs **joint** predictive likelihood
 
 **Why.** *The pivotal experiment.* Marginal (per-point) predictive likelihood
-integrates out all cross-point correlation, so it is almost insensitive to the
+integrates out all cross-point correlation, so on in-distribution queries it is
+nearly insensitive to the
 off-diagonal posterior covariance — the only thing LCM adds over diagonal. Joint
 predictive likelihood over a batch of test points is the metric that can see it
 (a point argued independently by Osband et al. for the Neural Testbed). Exp 8 was
@@ -1316,6 +1323,436 @@ is entirely hidden. What survives from Exp 10 is the narrower and still-true
 finding that **gradient descent alone cannot discover a latent order** (recovery
 0.028, unchanged) — you need seriation to supply it. The practical recipe is:
 *seriate, then refine, and normalise the target.*
+
+---
+
+## Experiment 17 — Where off-diagonal covariance actually shows up
+
+**The project's "marginal metrics are blind to off-diagonal covariance" framing was
+imprecise, and the imprecision hid a better setting.** The marginal predictive
+variance is `xᵀΣx`, which plainly depends on off-diagonals. What actually made our
+marginal metrics tie is a property of the **test distribution**, not of the metric.
+
+**The mechanism.** For in-distribution inputs `x ~ N(0, Σ_f)` and a posterior
+`Σ ≈ (n Σ_f/σ² )⁻¹`, the mean predictive variance is pinned by a trace identity,
+independently of the covariance *structure*:
+
+```latex
+\mathbb{E}\big[x^\top \Sigma x\big] = \operatorname{tr}(\Sigma\,\Sigma_f) = \frac{\sigma^2 d}{n}
+\qquad\Longrightarrow\qquad
+\mathbb{E}[\text{predictive variance}] = \sigma^2\Big(1 + \frac{d}{n}\Big)
+```
+
+Any approximation that gets the trace about right matches on average. Measured at
+`d=300`, `n=1500`, `σ=0.5`: the three posteriors give mean predictive variance
+0.3003 (diagonal), 0.2948 (LCM) and 0.3124 (full) against the identity's 0.3000.
+
+**Setup.** One AR(1) GLM, `d=300`, `n=1500`, `ρ=0.9`, prior fixed at 1, 5 seeds,
+all posteriors from `laplace-torch`. Four probes on the *same* three posteriors:
+in-distribution inputs; **shifted** inputs with identical unit marginal variances
+but no correlation; the sum of 20 independent predictions; and the sum of 20
+predictions at *clustered* (mutually correlated) query points.
+
+| Probe | diag | LCM | full | gap closed by LCM |
+|---|---|---|---|---|
+| (a) marginal LL, in-distribution | −0.8473 | −0.8472 | −0.8459 | **0.6%** |
+| (b) marginal LL, **shifted inputs** | −1.7806 | −1.3802 | −1.3541 | **93.9%** |
+| (c) LL of a sum, independent queries | −2.3163 | −2.3173 | −2.3172 | 108.6% *(on 0.001 nats — noise)* |
+| (d) LL of a sum, correlated queries | −3.1855 | −3.1759 | −3.1464 | 24.5% |
+
+Calibration, `E[(y−μ)²/var]`, ideal 1:
+
+| Probe | diag | LCM | full |
+|---|---|---|---|
+| in-distribution | 1.061 | 1.078 | 1.017 |
+| **shifted inputs** | **2.926** | **1.359** | 1.045 |
+| sum, independent queries | 1.004 | 1.022 | 0.964 |
+| sum, correlated queries | 1.320 | 1.381 | 1.051 |
+
+**Outcome — and the control that reinterprets it.** Under covariate shift a plain
+per-point marginal metric closes **93.9%** of the gap, and diagonal Laplace is **three
+times overconfident** (z² = 2.93) where full Laplace is calibrated (1.05). But giving
+each method **one oracle scalar scale** on its epistemic variance collapses the
+difference entirely:
+
+| rescaled probe | diag | LCM | full | best scale (d/L/f) |
+|---|---|---|---|---|
+| (a) in-distribution | −0.8460 | −0.8452 | −0.8452 | 1.3 / 1.6 / 1.1 |
+| (b) **shifted** | **−1.3525** | **−1.3521** | **−1.3515** | **12.2 / 1.6 / 1.1** |
+
+All three land within **0.001 nats**. So this probe measures whether a method's overall
+variance *scale* is right, **not whether its off-diagonal structure is right** — a
+diagonal posterior plus one temperature is as good as the full posterior under shift.
+What the structured posteriors genuinely provide is that they arrive near the correct
+scale by themselves (1.1–1.6) where diagonal needs **12.2x**. That is useful — under real
+shift you have no labels with which to fit a temperature — but it is an
+automatic-calibration property, not an off-diagonal one. The same control gives the same
+verdict in Exp 18 (classification) and Exp 20 (real spectra), so the reading is consistent
+across all three settings. **This retracts the earlier claim that covariate shift is "the
+right setting" for off-diagonal covariance.**
+
+**The aggregates were a null.** Summing independent predictions changes nothing
+(0.001 nats): independent queries have no cross-covariance to get wrong. Summing
+*correlated* queries does expose a gap, but only 24.5% of it, and LCM is no
+better calibrated than diagonal there (1.38 vs 1.32) — because clustering points
+around an in-distribution base keeps the query inside the trace-pinned regime.
+
+**Conclusion — one mechanism explains all four probes.** What matters is whether the
+query direction lies in the **small-eigenvalue subspace** of the data covariance.
+In-distribution queries concentrate on large-eigenvalue directions, where every
+approximation agrees. Shifted queries put weight on the small-eigenvalue directions,
+where the approximations do differ. But per the control above, what that difference
+amounts to is the overall variance **scale**, which one scalar repairs: **no probe tried
+in this project separates off-diagonal structure from a correctly-scaled diagonal.**
+Extrapolation is where the methods visibly diverge; it is not evidence that the
+off-diagonals are what matter. That remains the central open problem.
+
+---
+
+## Experiment 18 — Kron-LCM: the first empirical test of KFAC x LCM
+
+KFAC x LCM had never been run. What existed was the algebra (the one-factor eigen
+reduction, verified to machine precision) and a fit-only measurement of how chain-like
+real KFAC factors are. No posterior had ever been built from it. It now lives in the
+library, so it is reached the same way as every baseline:
+
+```python
+Laplace(model, "classification", hessian_structure="kron_lcm", lcm_order="seriate")
+```
+
+### What was added to the library (not to the experiment)
+
+| Addition | Where | What it is |
+|---|---|---|
+| `kalman_solve` | `laplace/lcm.py` | `A^-1 y` in `O(dim)`. The filter gives `A^-1 = L^T S^-1 L`, so a solve is one *backward* affine scan reusing the existing associative scan — no sequential sweep |
+| `LCMCovariance.fit_moments` | `laplace/lcm.py` | the closed-form three-band estimator; no optimiser, one pass, never forms `dim x dim` |
+| `seriation_order` | `laplace/lcm.py` | Fiedler-vector ordering, so the chain axis can be recovered with no side information |
+| `KronLCMDecomposed` | `laplace/utils/matrix.py` | the reduction as a precision object with `KronDecomposed`'s interface |
+| `KronLCMLaplace`, `KronLCMLLLaplace` | `baselaplace.py`, `lllaplace.py` | `hessian_structure="kron_lcm"`, all-weights and last-layer |
+
+Correctness (15 new tests in `Laplace/tests/test_lcm.py`, 33 total; the library's own 491
+tests still pass):
+
+* `kalman_solve` vs dense solves: **<= 2.6e-15** relative, for `dim` 1...500, any coordinate order.
+* `fit_moments` on an exact LCM target: **3.0e-15** on the interior. The two endpoint
+  amplitudes are genuinely unidentified by three bands (they carry the whole 3e-2
+  full-matrix error); order-equivariant to 1e-12.
+* **Dense fallback (`lcm_layers=[]`) reproduces `KronLaplace` bit-for-bit** — log-det,
+  marginal likelihood, `functional_variance`, `functional_covariance` and the predictive
+  all `0.00e+00`. This pins the plumbing independently of the LCM approximation.
+* Structured path vs the dense form of the same precision: log-det exact, functional
+  variance/covariance **<= 1e-15**, sampling (perturb-and-solve, since an LCM has no
+  closed-form square root) within Monte-Carlo error.
+
+Two pre-existing bugs surfaced and were fixed: `KronLLLaplace(damping=True)` silently
+lost the setting (`KronLaplace.__init__` runs later in the MRO and reset it, although the
+docstring documents initialising as supported), and `backend.jacobians` returns **all
+zeros** for a last-layer Laplace, where `last_layer_jacobians` is the right call. The
+latter was present in `common.glm_joint`; it is harmless there because only the
+`subset_of_weights='all'` GLM experiments call it, but it made the first validation
+attempt vacuous until caught. Both now have regression tests.
+
+### Result — softmax on AR(1)-ordered features, i=256, C=5, N=2000, rho=0.9, 3 seeds
+
+Each structure has its prior tuned by the library's own
+`optimize_prior_precision(method="marglik")`, so none of them loses on a scalar.
+
+**Only one of the three probes separates diagonal from full at all**, which is Exp 17's
+finding reappearing:
+
+| Probe | diag -> full gap | status |
+|---|---|---|
+| in-distribution marginal | **-0.0055 +- 0.0045** | degenerate — diagonal scores *better* than full |
+| **covariate-shifted marginal** | **+1.1223 +- 0.1257** | separates (8.9 sem) |
+| joint, correlated queries | **+0.0035 +- 0.0097** | degenerate — gap is 0.4 sem |
+
+So only the shifted column below carries information; "gap closed" on the other two is a
+ratio of noise and the script now suppresses it.
+
+| structure | stored | NLL shifted | gap closed | ECE shifted | marglik |
+|---|---|---|---|---|---|
+| full | 1 651 225 | 1.4599 | 100.0% | 0.095 | -653 |
+| kron (KFAC) | 65 586 | 1.5517 | 91.8% | 0.144 | -765 |
+| kron, damped | 65 586 | 1.5394 | 92.9% | 0.146 | -765 |
+| **kron_lcm** | **818** | **1.5482** | **92.1%** | 0.148 | -772 |
+| kron_lcm, seriated | 818 | 1.8333 | 66.7% | 0.211 | -959 |
+| diag | 1 285 | 2.5822 | 0.0% | 0.310 | -1325 |
+
+**Outcome.** On the one probe with any power, Kron-LCM closes **92.1%** of the
+diagonal-to-full gap against KFAC's 91.8% — a tie — while storing **818 numbers against
+KFAC's 65 586 (80x less) and full's 1.65M (2019x less)**. That is the first evidence the
+construction works as a posterior and not only as algebra. Given the true feature order it
+matches KFAC at 1/80th the memory; asked to *recover* the order by seriation it falls to
+66.7%, so ordering is again where the method pays, consistent with Exp 10/16.
+
+**The same scale control as Exp 20 applies here too.** Under one oracle scalar scale on
+the predictive covariance, every structure converges:
+
+| structure | NLL shifted | oracle-scaled | best scale |
+|---|---|---|---|
+| full | 1.4599 | 1.4154 | 1.98 |
+| kron | 1.5517 | 1.4176 | 3.51 |
+| kron_lcm | 1.5482 | 1.4181 | 3.51 |
+| kron_lcm, seriated | 1.8333 | 1.4216 | 6.25 |
+| **diag** | 2.5822 | **1.4107** | **12.22** |
+
+Tempered diagonal is the **best** of all six (1.4107), and the spread across structures is
+~0.01 nats against an untempered gap of 1.12. So the 92.1% describes how well each
+method's marginal-likelihood-tuned scale happens to suit the shifted set, not the quality
+of its covariance shape. Kron-LCM's standing relative to KFAC is unchanged — they tie
+before and after — but neither beats a correctly-scaled diagonal.
+
+**Correction to the preliminary (1-seed) reading.** A first single-seed run appeared to
+show Kron-LCM *ahead* of KFAC on the joint probe (45.2% vs 2.7%). With 3 seeds the
+diag-to-full gap on that probe is 0.0035 nats, so those figures were noise over noise and
+are withdrawn. Clustering query points around an in-distribution base keeps them inside
+the trace-pinned regime — exactly what Exp 17(d) measured, where the same probe recovered
+only 24.5% in a setting where it did have power.
+
+---
+---
+
+## Experiment 19 — where Kron-LCM can be built and KFAC cannot
+
+Exp 18 established parity-minus-2.2-points on 80x less storage at `i=256`. The storage
+ratio grows as `i/3`, so the question that decides whether any of this matters is the
+feasibility frontier. Measured on this machine (31 GiB RAM, 7.6 GiB VRAM), AR(1)
+activations, `N=1000`, `rho=0.9`, `C=10` outputs:
+
+| i | `fit_moments` | log-det | solve | LCM storage | dense factor (KFAC) | exact full | feasible here |
+|---|---|---|---|---|---|---|---|
+| 512 | 0.002 s | 0.001 s | 0.003 s | 0.01 MiB | 0.002 GiB | 0.2 GiB | all three |
+| 2 048 | 0.003 s | 0.001 s | 0.007 s | 0.05 MiB | 0.03 GiB | 3.1 GiB | all three |
+| 8 192 | 0.022 s | 0.002 s | 0.014 s | 0.19 MiB | 0.50 GiB | **50 GiB** | kron_lcm + KFAC |
+| 32 768 | 0.093 s | 0.006 s | 0.054 s | 0.75 MiB | **8.0 GiB** | 800 GiB | **kron_lcm only** |
+| 65 536 | **0.188 s** | 0.008 s | 0.195 s | **1.50 MiB** | **32 GiB** | 3 200 GiB | **kron_lcm only** |
+
+**Outcome.** At `i=65 536` the whole posterior factor is fitted in **0.188 s** and stored
+in **1.50 MiB**, and its log-determinant (0.008 s) and solves (0.195 s, all finite) run
+at the same width. KFAC's dense factor there would need **32 GiB — more than this machine
+has** — and the exact full posterior 3 200 GiB. The crossover on this hardware is between
+`i=8 192` (KFAC still comfortable at 0.5 GiB) and `i=32 768` (8 GiB: past VRAM and a
+quarter of RAM). So the regime where Kron-LCM is the *only* option starts at roughly
+30 000 inputs, which is reached by wide MLP heads, long-sequence attention projections and
+high-resolution 1-D feature maps.
+
+Quality does not degrade with width: the fitted chain recovers `phi = 0.9031` against the
+true `rho = 0.9` at every width from 512 to 65 536 (worst single edge off by 2.9e-2),
+checked in `O(i)` without ever forming the matrix.
+
+**The honest caveat.** `Laplace(..., hessian_structure="kron_lcm")` routes through the
+library's `Kron` accumulator, which materialises the `i x i` factor *before* the LCM is
+fitted to it — so that entry point is bounded by `i^2` exactly like KFAC, and only the
+fitted posterior's storage shrinks. The numbers above come from
+`LCMCovariance.fit_moments(X)` applied directly to activations, which is `O(N i)` time and
+`O(i)` memory and needs no matrix. The library therefore has the primitive but not yet a
+streaming Kron accumulator that uses it; adding one is what would make the frontier above
+reachable through the normal `Laplace(...)` call. That is the single most valuable
+remaining piece of implementation.
+
+---
+---
+
+## Experiment 20 — Kron-LCM on real ordered data, with more than one output
+
+Tecator near-infrared spectroscopy: 240 meat samples, 100 wavelength-ordered absorbance
+channels, **three** targets (moisture, fat, protein), so `C=3` and the Kronecker
+factorisation is not vacuous — this fixes the flaw in the earlier flagship plan, where a
+single output would have made KFAC *equal* the full layer Hessian. With an isotropic
+Gaussian likelihood the output factor is constant across examples, so **KFAC is exact
+here**, which isolates the only question that matters for Kron-LCM: what does replacing
+the 100x100 input factor with a 300-number chain cost when everything else is exact?
+Internal check passes: `kron` and `full` agree to **1.9e-05** nats.
+
+Shift probe is a real one — train on the low/mid-fat samples, test on the 50 highest-fat
+ones (extrapolation along a physically meaningful direction). 5 seeds, prior tuned per
+method by `optimize_prior_precision(method="marglik")`.
+
+| structure | stored | marglik | NLL in-dist | NLL shifted | z² in-dist | z² shifted |
+|---|---|---|---|---|---|---|
+| full | 91 809 | **−163.2** | 0.6192 | 23.7052 | 1.193 | 16.291 |
+| kron (= exact here) | 10 018 | −163.3 | 0.6192 | 23.7059 | 1.193 | 16.292 |
+| **kron_lcm** | **318** | −530.3 | 1.8500 | **4.5134** | 0.196 | **1.111** |
+| kron_lcm, seriated | 318 | −530.3 | 1.8500 | 4.5134 | 0.196 | 1.111 |
+| diag | 303 | −1536.2 | **0.5959** | 21.9363 | 0.853 | 14.833 |
+
+Two things jump out, and the **"gap closed vs full" metric is meaningless here**: full is
+not the ceiling, it is the *worst* method under shift (NLL 23.7, z² = 16.3 — errors four
+times larger than the predicted standard deviation). Kron-LCM looks spectacular: 5x
+better NLL and near-perfect calibration (z² = 1.111 against the ideal 1.0).
+
+### The control that overturns the obvious reading
+
+Kron-LCM's variances are simply *bigger*. Giving every method one oracle scalar variance
+scale, chosen on the shifted set itself (so it upper-bounds what inflation alone can buy):
+
+| structure | NLL shifted | oracle-scaled | best scale |
+|---|---|---|---|
+| full | 23.7052 | **4.4780** | 46.0 |
+| kron | 23.7059 | **4.4779** | 46.0 |
+| kron_lcm | 4.5134 | 4.4980 | **1.1** |
+| diag | 21.9363 | 6.1534 | 101.1 |
+
+**So Kron-LCM's entire advantage here is calibration slack, not covariance shape.** Once
+full is allowed one temperature it *ties and slightly beats* Kron-LCM (4.478 vs 4.498).
+What the chain actually does is land at the right overall scale by itself — it needs
+temperature **1.1**, where full and KFAC need **46x** inflation and diagonal **101x**.
+That is a real and useful property (no post-hoc temperature set on held-out shifted data,
+which you would not have), but it is an automatic-calibration claim, not a
+better-structure claim, and it must not be reported as the latter. Consistent with this,
+Kron-LCM's marginal likelihood is far *worse* (−530 vs −163): it fits the curvature
+considerably less well and still predicts better under shift — the fit-versus-prediction
+divergence again, this time on real data and in the method's favour.
+
+The same control has since been applied to Exp 18, with the same verdict: every
+structure converges to ~1.41 nats once tempered, and tempered diagonal is best.
+
+### Ordering: seriation is exact on real spectra
+
+Natural and seriated orderings give *bit-identical* numbers above, because spectral
+seriation recovers the wavelength order **exactly, reversed** — and reversal leaves
+`|t_p − t_q|` unchanged, so the chain is invariant to it. Measuring when this works:
+
+| factor | neighbour \|corr\| | seriation Spearman | recovered? |
+|---|---|---|---|
+| Tecator NIR, n=140 | 1.0000 | **1.0000** | **exactly, reversed** |
+| AR(1) ρ=0.99, N=2000 | 0.9899 | 1.0000 | monotone |
+| AR(1) ρ=0.9, N=2000 (Exp 18) | 0.9000 | 0.9060 | mostly, with local errors |
+| AR(1) ρ=0.9, N=200 | 0.8949 | **0.4827** | **no** |
+
+Recovery is governed by how smooth the chain is and how well the factor is estimated. On
+real smooth spectra it is free; at ρ=0.9 it has local errors that cost Exp 18 twenty-two
+points of gap closed (90.3% → 68.0%); with `N` small relative to `i` it collapses.
+
+---
+---
+
+## Experiment 21 — is a *learned* feature map chain-structured? (the deep-learning test)
+
+Exps 18 and 20 both put the chain on raw, physically ordered inputs. That left untouched
+the question that decides whether any of this concerns deep learning, and which the
+KFAC x LCM note's main recommendation rests on: **when a network learns a 1-D feature map,
+is the covariance of those learned features still a smooth chain?**
+
+A small 1-D CNN (two conv layers, 8 channels, max-pool) is trained on Tecator spectra and
+last-layer Laplace is taken over `Linear(368, 3)`, so the Kronecker input factor is the
+covariance of the flattened penultimate feature map. Three outputs keep the factorisation
+non-vacuous; KFAC is again exact (internal check: `dNLL = +2.3e-04`). 5 seeds.
+
+### The answer is no
+
+| diagnostic | value | reading |
+|---|---|---|
+| neighbour \|corr\| along the flattened index | 0.7152 | — |
+| mean \|corr\| over *all* pairs | **0.2529** | a chain needs neighbour >> mean; the ratio is only 2.8x |
+| seriation agreement with that index | **0.0375** | the flattened order has no special status; seriation finds an unrelated one |
+| **effective rank of the factor** | **1.75 of 368** | the factor is essentially **rank 2** |
+| LCM fit error to the true factor | 0.5575 natural / 0.9817 seriated | a poor fit either way |
+
+Stable across every seed: effective rank 1.32–2.06, seriation Spearman 0.015–0.082,
+neighbour correlation 0.62–0.74. **A learned 1-D feature map's covariance is nearly
+rank-2, not a chain** — the same verdict the hidden-layer factor measurements reached
+earlier (effective rank 1.3–1.6, low-rank beating the chain 12–29x), now reproduced on the
+one construction the theory note actually recommended.
+
+### The predictive numbers, with the control
+
+| structure | marglik | NLL in-dist | NLL shifted | z² shifted | tempered | best scale |
+|---|---|---|---|---|---|---|
+| full | **−410.7** | **2.1512** | 7.6376 | 4.21 | 4.9450 | 11.7 |
+| kron | −415.5 | 2.1514 | 7.6470 | 4.22 | 4.9405 | 11.7 |
+| kron_lcm | −475.8 | 2.7046 | **5.5004** | **1.90** | 4.8235 | 2.5 |
+| kron_lcm, seriated | −1283.2 | 2.4576 | 6.9392 | 3.28 | 5.3339 | 6.4 |
+| diag | −1595.5 | 2.4346 | 7.2980 | 3.56 | 5.5189 | 8.8 |
+
+Paired against full, across seeds:
+
+* in-distribution: kron_lcm is **+0.553 ± 0.098 worse (5.6 sem)** — significantly worse.
+* shifted, untempered: **−2.137 ± 0.599 better (3.6 sem)** — the same calibration effect as
+  Exps 18/20 (it needs temperature 2.5 where full needs 11.7).
+* shifted, **tempered**: **−0.122 ± 0.068 (1.8 sem)** — **not significant.**
+
+So the chain's advantage here is again variance scale, and once that is controlled for
+nothing survives; in-distribution it is clearly worse, and its marginal likelihood is far
+worse (−476 vs −411), consistent with the 0.56 fit error.
+
+**Outcome — this closes the theory note's main recommendation, negatively.** Putting the
+chain on a *learned* feature map does not work, because learned feature maps are not
+chains: they are nearly rank-2. The place for a chain remains a *physically* ordered axis
+(wavelengths, lags), where Exp 20 showed seriation recovers the order exactly. For learned
+representations the measurements have now said the same thing three times — low-rank is
+the right structure.
+
+---
+---
+
+## Experiment 22 — reproducing the paper's own claim, to test our implementation
+
+Every negative in this project concerns a **transplant**: LCM was taken out of REMIX
+(model inversion for data-free continual learning) and used as the structured *precision*
+of a Laplace posterior. Before trusting those negatives, the implementation has to clear
+the paper's own bar. arXiv:2605.11804 Figure 4 claims LCM attains higher **feature
+log-likelihood** than a diagonal Gaussian at every ResNet-34 layer, at `D = C x H x W` up
+to ~2e5. Reproduced here in miniature: a CNN on local CIFAR-10 (4 classes), flattened
+feature maps, LCM fitted with **the paper's own Frobenius objective** (`fit_frobenius`),
+scored by held-out Gaussian NLL against a diagonal fit.
+
+| layer | D = CxHxW | n train | NLL LCM | NLL diagonal | gain per dim | LCM wins? |
+|---|---|---|---|---|---|---|
+| layer1 | 16384 | 1280 | **13220.0** | 14603.0 | 0.0844 | **yes** |
+| layer2 | 8192 | 1280 | **6502.9** | 6570.1 | 0.0082 | **yes** |
+| layer3 | 4096 | 1280 | **3336.0** | 3883.7 | 0.1337 | **yes** |
+
+**The paper's claim reproduces: LCM beats the diagonal baseline at every layer.** So the
+port is sound *in the setting the paper uses it in*, and this project's negative results
+are not attributable to a broken implementation. They are about the transplant.
+
+### What the transplant changed
+
+| | Paper (REMIX) | This project |
+|---|---|---|
+| What LCM models | the **covariance** of features, Sigma | the posterior **precision** (GGN/Hessian) |
+| Fit objective | Frobenius on the empirical covariance (eqs 5-7) | `fit_dense` (`baselaplace.py`) |
+| What `a` indexes | the flattened feature map, `D` up to 2e5 | weight-space dimensions |
+| Judged by | feature log-likelihood; continual-learning accuracy | predictive LL, calibration |
+
+The first row is the consequential one. The paper puts **Sigma** in the LCM family, so its
+inverse is tridiagonal — which is exactly what makes its likelihood cheap. This project
+puts the **precision** in the family, so the resulting covariance is *not* LCM. Combined
+with the fit-versus-prediction mechanism (Frobenius error on a precision is dominated by
+its large eigenvalues, while predictions depend on its small ones), that is a sufficient
+explanation for why the transplant underperforms while the original works.
+
+### A claim the paper never made
+
+The project had been testing whether LCM can **recover a known ordering**. The paper
+claims no such thing. Its coordinates are described as inducing *"an ordering over
+channels [that] allows kernel interactions to be computed via directional accumulations"*
+— an enabler for the `O(C log C)` prefix-sum algorithms, not a recovery result. In its
+setting the coordinates index conv channels, which have no canonical order to recover.
+Exp 10/10b/16's ordering negatives therefore stand as findings about **this project's
+extension**, not as refutations of the paper.
+
+**What could not be run here.** The paper's `D ~ 2e5` at full dataset size is out of reach:
+the Frobenius fit costs `O(N D)` per step, and a first attempt at `D=16384` with `N=2880`
+and 400 steps was killed after 880 s on one layer. The table above uses `N=1280` and 150
+steps, which still spans the high-`D` regime the claim concerns.
+
+---
+---
+
+## What could not be run on this machine
+
+Recorded so the gaps are not mistaken for negative results. The machine is an RTX 4060
+Laptop (7.6 GiB) with 31 GiB RAM.
+
+| Wanted | Blocker |
+|---|---|
+| Library `lowrank` baseline (`LowRankLaplace`) | `eig_lowrank` exists only in the `asdfghjkl` backend, which is **not installed**. A dependency, not hardware — installable on request. Exp 13/14 compared low-rank *factors* with their own code, so the gap is in the library-based comparison only |
+| Exact `full` Laplace beyond ~i=2048 | measured in Exp 19: 3.1 GiB at i=2048 with C=10, **50 GiB at i=8192**. So above a few thousand inputs Kron-LCM cannot be scored against exact Full at all — only against KFAC |
+| Dense KFAC factors at i >= 32 768 | measured: `i^2` float64 is 0.5 GiB at i=8192, **8 GiB at i=32 768**, **32 GiB at i=65 536** (more than this machine's RAM). Kron-LCM runs there in 0.188 s / 1.5 MiB, so above ~30k inputs there is no baseline to compare against on this hardware |
+| Real wide architectures (ResNet/ViT last layers, transformer MLPs) | a 2048→1000 head is fine for KFAC but `Full` is out of reach on any machine; large-scale KFAC-vs-Kron-LCM comparisons need more than 7.6 GiB of VRAM |
+| Many-seed studies at scale | the headline results rest on 3–5 seeds; widening CIs at i >= 2000 is wall-clock bound rather than impossible |
 
 ---
 ---

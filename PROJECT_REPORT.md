@@ -165,7 +165,7 @@ NN-layer curvature is Kronecker-structured (KFAC's home), not chain-structured.
 | 5 | Epistemic OOD (mutual information / BALD instead of max-confidence) | Correctly exposes epistemic uncertainty (MAP→0.50 AUROC), KFAC/Full 0.72, but **LCM 0.62 < Diag 0.64**. Does not rescue LCM. |
 | 6 | Per-layer (block-diagonal) LCM | KL to full improves 12–22% vs a single chain; still short of KFAC. |
 | 7 | 1-D-correlated GLM (LCM's "home") | The reframing: LCM's structure is only *correct* for genuinely 1-D-correlated, non-Kronecker curvature (GLMs with ordered features). |
-| 8/8b/8c | **Marginal vs joint predictive LL** | **The key positive.** Marginal LL: LCM ties diagonal — insensitive to off-diagonal covariance. **Joint LL: LCM closes 86.7%±24 (d=500), 84.3%±11 (d=1000), 64.2%±10 (d=1500) of the diagonal→full gap** over 10 seeds, run through `laplace-torch` (§7). *Revised upward from 62/52/23% once the fit's scale defect was fixed — the earlier decay with d was largely fit degradation.* |
+| 8/8b/8c | **Marginal vs joint predictive LL** | **The key positive.** Marginal LL: LCM ties diagonal on *in-distribution* queries — a trace identity pins the mean predictive variance there whatever the structure (Exp 17). **Joint LL: LCM closes 86.7%±24 (d=500), 84.3%±11 (d=1000), 64.2%±10 (d=1500) of the diagonal→full gap** over 10 seeds, run through `laplace-torch` (§7). *Revised upward from 62/52/23% once the fit's scale defect was fixed — the earlier decay with d was largely fit degradation.* |
 | 10/10b + controls | **Does the *learned* ordering matter?** ⚠ *see correction above — the negatives below were a fitting artifact (Exp 16)* | Given the correct order LCM works (+58% joint-gap closed, learned-but-correctly-initialised +59%). With an unknown/permuted order, gradient learning recovers \|Spearman\| = **0.028** (≈ random) and lands at **−84%** (*worse than diagonal*); seriation recovery is highly seed-dependent (**0.31 / 0.70 / 0.99**, mean 0.67) and its variant scores −79%. Fragility curve: the chain beats diagonal at \|Spearman\| ≥ **0.999** but **fails at 0.998**. The model is permutation-**equivariant** — the failure is purely that fitting `a` cannot discover a latent order. Nuance: with a wrong order the *fixed*-order variant degrades **gracefully to diagonal** (0%), while the *learned* variant overfits into a confidently-wrong chain (−84%). |
 | 9 | **Active learning** — does joint UQ buy a downstream win? | **No, and cleanly so.** Greedy batch selection under the LCM posterior is *worse than under the diagonal one* at every `d` (137.6/163.8/177.5 vs 140.3/167.0/180.4), while greedy-under-`full` is best (141.9/167.9/181.1) — so better joint UQ does help in principle and the failure is LCM's fit. Cause: active learning starts at `n ≪ d`, where the empirical second moment is rank-deficient and LCM's extra parameters model noise (fit residual 0.74 at `n=40`). |
 | 11 | **Real ordered data** (Tecator NIR, CO₂ lags) | On NIR (known wavelength order, n≈d): LCM **closes ~100%** of the diagonal→full joint-LL gap and beats diagonal on marginal too. On CO₂ (n≫d): gap negligible. In both, `LCM-learned ≈ LCM-fixed` — the **learned coordinate is inactive** because the order is already known. |
@@ -262,7 +262,7 @@ and what could be done differently.
 ### 6.4 Evaluation metric: joint vs marginal predictive likelihood
 - **Why it mattered.** Every early negative used a **marginal** metric (per-point
   NLL, ECE, single-point OOD). Marginal predictive uncertainty is almost
-  insensitive to the *off-diagonal* covariance — the very thing a structured model
+  insensitive, on *in-distribution* queries, to the *off-diagonal* covariance — the very thing a structured model
   adds (a point made independently by Osband et al. on joint predictions). Once we
   switched to **joint** predictive likelihood over a batch of points, the LCM
   advantage appeared. This single reframing turned a flat negative into the
@@ -543,7 +543,7 @@ against a plain baseline of 0.100; seriation reaches 0.624.
 - **Publishable, honestly, as a focused contribution** — workshop (AABI /
   NeurIPS-BDL) → TMLR — combining (a) the systems artifact (near-linear structured
   Laplace with an associative-scan log-det, in a maintained library), (b) the
-  characterization (fidelity ≠ predictive; marginal-insensitive / joint-sensitive;
+  characterization (fidelity ≠ predictive; in-distribution queries are trace-pinned while shifted ones are structure-sensitive, Exp 17;
   Kronecker-vs-chain; and — from Exp 14 — *Frobenius fit is a poor proxy for
   predictive quality*), and (c) the joint-UQ win for 1-D-ordered features.
   See `PUBLICATION_ASSESSMENT.md` for venue analysis, novelty check, and rebuttals;
@@ -569,6 +569,149 @@ against a plain baseline of 0.100; seriation reaches 0.624.
       more real ordered datasets (spectroscopy, genomics-LD, climate transects).
   (v) A better ordering-accuracy metric than \|Spearman\|, which saturates at 4
       decimal places across a 33-point swing in outcome.
+
+---
+
+## 9b. Retrospective — process, blind spots, and what remains
+
+### What the process got right
+
+**Changing one variable at a time** produced every real discovery. Holding the data
+and seeds fixed and toggling only the fit normalisation is what exposed the
+artifacts; the same discipline isolated the KFAC-versus-Full degeneracy and the
+factored-damping scale dependence. **Verifying every number in every document
+against its source CSV** caught several transcription errors, including a sign error
+in a gap-closed calculation.
+
+### What it got wrong, nine times
+
+| Claimed | Actually |
+|---|---|
+| "Matrix-free fit is weak" (0.53 vs 0.22) | An init-scaling bug in the experiment script |
+| Inverse-softplus nugget init | Genuine library bug: overflow to NaN, silent divergence |
+| `kernel_matvec` fine at scale | Genuine bug: coordinate-range overflow; every `d ≥ 5000` row was NaN |
+| Ordering recovery measured vs `argsort(perm)` | Wrong reference; mis-stated the seriation figure |
+| "Unknown ordering is catastrophic" (−84%) | Unnormalised fit; truly +10.2% |
+| "Seriation is insufficient" (−79%) | Must be refined, not frozen; truly +65.4% |
+| Headline 62/52/23% | 87/84/64% once the fit was fixed |
+| "LCM is strictly cheaper than KFAC" | False — only above layer aspect ratio 2.618 |
+| "Marginal metrics are blind to off-diagonals" | They are trace-pinned *in-distribution* (Exp 17); but under shift the difference is variance **scale**, which one scalar repairs (Exp 17/18/20 control) |
+
+Three of those were headline negatives that dissolved under scrutiny, each time in
+the method's favour. **The adversarial audit missed all of them**: it checked port
+fidelity, library integration, the precision-versus-covariance choice, scale and
+habitat — but never optimiser conditioning, which is what actually broke the
+results. That is the process lesson worth carrying: audit the numerical procedure,
+not only the modelling choices.
+
+Operationally, duplicated documents drifted (this report's experimental section went
+three months stale), a symlink experiment silently broke git tracking of the docs,
+and time was lost to orphaned background jobs and a buffered benchmark that printed
+nothing.
+
+### What was overlooked
+
+Ranked by how much it could still change the conclusions.
+
+1. **The joint metric was never computed on a neural network.** None of the six
+   network experiments computes a joint predictive. The only metric LCM wins has
+   never met a real model.
+2. **Equal-budget comparisons gave LCM the answer.** Its `3d` parameters include `d`
+   coordinates supplied from ground truth — the true ordering *and* spacing — while
+   low-rank received no side information. "LCM beats low-rank 15×" is not
+   apples-to-apples.
+3. **Fit quality served as the structure diagnostic throughout**, although Exp 14b
+   proved fit and prediction diverge.
+4. **Low-rank arrived as experiment 13 of 17**, and still has no real-data or
+   predictive comparison. Tecator's input covariance has effective rank 1.0, so
+   low-rank may match it — which would undercut the only real-data win.
+5. **Classical baselines are absent**: tapered and banded covariance estimators,
+   state-space GPs, Toeplitz models. If the claim is "ordered features deserve a 1-D
+   GP prior", those are the competitors, not diagonal Laplace.
+6. **The proposed flagship experiment does not test its own theory**: a 1-D CNN
+   regression head has one output, so the Kronecker structure is vacuous and KFAC
+   equals Full. It needs at least two outputs.
+7. Smaller but real: regime B's Laplace is *exact*, so it tests covariance
+   approximation rather than a Laplace approximation; the prior was fixed rather
+   than tuned per structure in regime B; everything ran at small scale; the most
+   consequential results rest on 3–5 seeds; and the GGN-versus-Hessian confound on
+   hidden layers is untested.
+
+### What remains, in order
+
+**Cheap and decisive.** (i) Tecator, LCM versus low-rank, predictively — protects or
+kills the only real-data claim. (ii) Re-run the factor comparison charging LCM for
+seriation instead of handing it the true order. (iii) Joint predictive likelihood on
+a linearized network with two or more outputs — the experiment that decides whether
+any of this concerns deep learning. (iv) Find a probe that separates off-diagonal
+structure from a correctly-scaled diagonal. The oracle-scale control (Exp 17/18/20)
+shows that no probe tried so far does: given one temperature, a diagonal posterior
+matches the full one under shift to within 0.001-0.01 nats in all three settings.
+This is now the project's central open problem.
+
+**Then build.** (The closed-form band estimator and the Kron-LCM reduction are now *in* the library — see the addendum below.) O1 as a last-layer
+structure (needs the O(m) vector solve and the perturb-and-solve sampler); re-run
+Exp 10/10b/11 under normalised fitting; fit factors by likelihood rather than
+Frobenius.
+
+**Stop.** Flat per-layer LCM, nugget annealing, a depth chain, convolution-position
+chains, active learning, and ordering recovery by gradient descent — all measured,
+all failed for understood reasons.
+
+### Addendum (this session): Kron-LCM built, and a control that resets the headline
+
+KFAC x LCM now exists as library code (`hessian_structure="kron_lcm"`, 15 new tests) and
+has been run three ways: synthetic ordered features (Exp 18), a feasibility sweep to
+i=65 536 (Exp 19) and real Tecator spectra with three outputs (Exp 20). Three results
+worth carrying forward.
+
+1. **It works and it is tiny.** On synthetic ordered features it ties KFAC (92.1% vs
+   91.8% of the diagonal-to-full gap) on **80x less storage**, and at i=65 536 the factor
+   is fitted in 0.188 s into 1.50 MiB where KFAC's dense factor would need **32 GiB —
+   more than this machine has**. Above roughly 30 000 inputs it is the only one of the
+   three that can be built at all.
+2. **The oracle-scale control deflates the predictive claim.** Allowing every method one
+   scalar variance scale, all structures converge: 1.4107–1.4216 nats on Exp 18's shifted
+   probe (tempered **diagonal** is best), within 0.001 nats on Exp 17's, and on Tecator
+   full-with-temperature beats Kron-LCM (4.478 vs 4.498). What structured posteriors
+   genuinely give is landing near the right scale unaided (temperature 1.1–1.6, versus
+   12–101x for diagonal) — automatic calibration, not better covariance shape.
+3. **Ordering can be recovered, but not learned.** Spectral seriation recovers Tecator's
+   wavelength order **exactly** (reversed, which the chain is invariant to, so the fitted
+   posterior is bit-identical). Recovery degrades predictably with chain smoothness and
+   sample size: Spearman 1.000 at rho=0.99, 0.906 at rho=0.9, **0.483** at N=200. The
+   separate claim that LCM *learns* the order by optimising its coordinates remains
+   unsupported (Exp 10/10b: recovery at chance).
+
+4. **Learned feature maps are not chains — the theory note's main recommendation fails.**
+   Exp 21 trains a 1-D CNN on the spectra and takes last-layer Laplace over the flattened
+   feature map, which is exactly the construction the KFAC x LCM note proposed (and what
+   the original REMIX paper applied the kernel to). The learned factor has **effective
+   rank 1.75 of 368**, neighbour correlation 0.72 against a mean pairwise 0.25, and
+   seriation agrees with the flattened index at **0.0375** — no chain. In-distribution the
+   chain is significantly *worse* (+0.553 +- 0.098, 5.6 sem) and its shifted advantage
+   does not survive tempering (-0.122 +- 0.068, 1.8 sem). Three independent measurements
+   now agree that learned representations want **low-rank**, not a chain; the chain
+   belongs on physically ordered axes, where Exp 20 showed seriation recovers the order
+   exactly.
+
+5. **The implementation is sound, and the framing of every negative needed correcting.**
+   Reading the paper (`2605.11804v1.pdf`) established that it claims a structured
+   **covariance of features**, fitted by Frobenius, judged by feature log-likelihood and
+   continual-learning accuracy — and that it makes **no ordering-recovery claim**, its
+   coordinates indexing conv channels that have no canonical order. Exp 22 then checked our
+   port against the paper's own bar and **reproduced its Figure 4**: LCM beats the diagonal
+   baseline at every layer (13220 vs 14603 at D=16384, 6503 vs 6570 at D=8192, 3336 vs 3884
+   at D=4096). So this project's negatives are not an implementation defect and are **not
+   refutations of the paper** — they are evidence that the *transplant* (feature covariance
+   -> posterior precision, Frobenius -> `fit_dense`, feature axes -> weight axes) does not
+   carry the benefit across. The covariance-versus-precision flip is the likeliest mechanism:
+   the paper puts Sigma in the family so its inverse is tridiagonal, whereas we put the
+   precision in the family and then need its inverse for prediction.
+
+Two pre-existing library bugs were fixed on the way: `KronLLLaplace(damping=True)`
+silently lost the setting, and `backend.jacobians` returns all zeros for a last-layer
+Laplace (`last_layer_jacobians` is required). Neither affects any recorded result.
 
 ---
 
