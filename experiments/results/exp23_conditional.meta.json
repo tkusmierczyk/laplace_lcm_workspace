@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-10-18T22:31:45",
+  "experiments_git": {
+    "commit": "e43048f",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "dcaffef",
+    "dirty": false
+  },
+  "library_path": "/home/tom/prjs/laplace_bayes/Laplace",
+  "host": "Dell-G15-5530",
+  "slurm_job_id": null,
+  "argv": [
+    "experiments/exp23_conditional_prediction.py",
+    "--seeds",
+    "30",
+    "--rhos",
+    "0.0,0.5,0.9,0.99",
+    "--threads",
+    "2"
+  ],
+  "python": "3.13.5",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.2",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "threads": 2,
+  "dtype": "torch.float64",
+  "config": {
+    "d": 128,
+    "n_train": 60,
+    "n_test": 40,
+    "sigma": 0.3,
+    "prior": 1.0,
+    "rhos": [
+      0.0,
+      0.5,
+      0.9,
+      0.99
+    ],
+    "seeds": 30,
+    "threads": 2,
+    "tag": "exp23_conditional",
+    "elapsed_s": 40.877694666036405
+  }
+}
