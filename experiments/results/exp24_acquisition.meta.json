@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-10-18T22:37:07",
+  "experiments_git": {
+    "commit": "e43048f",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "dcaffef",
+    "dirty": false
+  },
+  "library_path": "/home/tom/prjs/laplace_bayes/Laplace",
+  "host": "Dell-G15-5530",
+  "slurm_job_id": null,
+  "argv": [
+    "experiments/exp24_batch_acquisition.py",
+    "--seeds",
+    "20",
+    "--rhos",
+    "0.0,0.9,0.99",
+    "--threads",
+    "2"
+  ],
+  "python": "3.13.5",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.2",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "threads": 2,
+  "dtype": "torch.float64",
+  "config": {
+    "d": 64,
+    "n_init": 8,
+    "n_pool": 300,
+    "n_ref": 100,
+    "n_eval": 300,
+    "rounds": 5,
+    "k": 4,
+    "duplicate": 5,
+    "sigma": 0.3,
+    "prior": 1.0,
+    "rhos": [
+      0.0,
+      0.9,
+      0.99
+    ],
+    "seeds": 20,
+    "threads": 2,
+    "tag": "exp24_acquisition",
+    "elapsed_s": 100.12208195001585
+  }
+}
