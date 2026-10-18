@@ -1881,6 +1881,123 @@ Laptop (7.6 GiB) with 31 GiB RAM.
 | Real wide architectures (ResNet/ViT last layers, transformer MLPs) | a 2048→1000 head is fine for KFAC but `Full` is out of reach on any machine; large-scale KFAC-vs-Kron-LCM comparisons need more than 7.6 GiB of VRAM |
 | Many-seed studies at scale | the headline results rest on 3–5 seeds; widening CIs at i >= 2000 is wall-clock bound rather than impossible |
 
+Since Exp 23 the GMUM SLURM cluster is the escalation path for these rows; `cluster/`
+holds the submission scripts. See the gap register below for what is queued there.
+
+---
+---
+
+## Experiment 26 — does Exp 23's separation survive on real features?
+
+`exp26_conditional_real.py` · `results/exp26_*.csv`
+
+Exp 23 was a synthetic AR(1) GLM, and it only separated above `rho ~ 0.9`. Two settings in
+this project already have opposite structural diagnostics, so the predictions were fixed
+before the run: Tecator spectra (neighbour |corr| 1.0000, seriation exact — chain *should*
+work) and Exp 21's learned CNN map (effective rank 1.75 of 368, seriation agreement 0.0375
+— chain should *not*).
+
+### First: the scale-free limit estimator does not survive contact with real data
+
+Exp 23's estimator conditions with the noise dropped, which is what makes it exactly
+scale-invariant. On real features it is unusable, and not because of the chain:
+
+| setting | effective rank | full: no conditioning → scale-free limit |
+|---|---|---|
+| Tecator spectra | **1.03** | 0.3366 → 0.8553 |
+| CNN last-layer map | **1.32** | 0.4579 → 1.0380 |
+
+With an effectively rank-one function-space posterior, `Sigma_OO` is singular and the
+noise-free conditional is an ill-posed extrapolation that hurts **every** family, the exact
+posterior worst of all (it has the most off-diagonal structure to extrapolate along). This
+was checked against the alternative reading — that the failure was a numerical choice of
+mine — by replacing the jittered solve with a pseudo-inverse, which is the well-defined
+limit for a rank-deficient block and still exactly scale-free. Same outcome.
+
+So on real data each arm gets its own **oracle scale** instead, the control used throughout
+Exps 17–21. That is conservative and still structure-controlled: every family is given its
+best possible temperature, so what remains is shape.
+
+### Result — Tecator NIR spectra, C=3 targets, 10 seeds
+
+| train size | no conditioning | full | kron | Kron-LCM | diag | conditioning gain (exact) | diag − LCM | gap closed |
+|---|---|---|---|---|---|---|---|---|
+| **n=25** (< d=100) | 0.4299 | **0.2998** | 0.3005 | 0.3079 | 0.3469 | **+30.3%** | +0.0391 ± 0.0084 (**4.6σ**) | **83%** |
+| n=60 | 0.3431 | 0.2870 | 0.2873 | 0.3007 | 0.3134 | +16.4% | +0.0127 ± 0.0076 (1.7σ) | 48% |
+| n=140 (all, 3 seeds) | 0.3366 | 0.3364 | 0.3364 | 0.3336 | 0.3374 | +0.1% | — | — |
+
+**Exp 23's separation does transfer to real ordered data — but only while the posterior is
+broad.** At `n=25` conditioning is worth 30% of the error and the chain captures 83% of
+what the exact posterior gets, significantly. By the full training set the epistemic
+covariance has shrunk below the noise, conditioning is worth 0.1% to anybody, and no family
+differs from another. That is a scope condition, not a defect: it is the small-data regime
+that motivates Bayesian treatment in the first place.
+
+On the CNN arm the chain never separates from the diagonal (1.8σ at full data, 2.0σ at
+n=25, and −18% "closed" at n=60 — i.e. slightly worse than the diagonal). Exp 21's
+diagnostics predicted this, and they were right.
+
+---
+---
+
+## Gap register
+
+What is settled, what is in flight, and what was identified and deliberately not run.
+Kept here so that "not done" is never mistaken for "does not work".
+
+### Closed
+
+| Gap | How | Outcome |
+|---|---|---|
+| **No probe separated off-diagonal structure from a correctly scaled diagonal** — the project's central open problem after Exps 17–21 | Exps 23 and 24 | **Closed.** Conditional prediction is exactly scale-invariant in the limit, and batch acquisition is a decision a temperature cannot redirect. Both separate LCM from a tempered diagonal at `rho >= 0.9` (6.0σ and 5.4σ), and both negative controls pass at `rho = 0` |
+| The Fig-4 reproduction (Exp 22) inherited the paper's **only baseline, a diagonal** | Exp 25 adds factor analysis at matched 3D budget, an equal-spacing 2D chain, and the same chain fitted by exact likelihood | In progress; see below |
+| Does our closed-form `fit_moments` beat the paper's Frobenius objective on the paper's own metric? | Exp 25's `lcm_moments` arm | Preliminary and striking: 1065.9 vs 3272.1 held-out NLL at `D=4096`, **verified against dense Cholesky** (log-det agreed to 2.9e-10, quadratic form to 1.5e-7, all eigenvalues positive, condition 7.3e4). Awaiting seeds |
+| Is `fit_moments` inside `kernel_matvec`'s safe numerical domain? It produces coordinate spans of ~3630, and a span over ~709 broke that routine earlier in the campaign | direct check against a dense kernel at spans 2 / 20 / 200 / 3630 | **No issue**: max error 8.9e-16 at span 3630, nothing non-finite. The blocked-rescaling fix holds |
+| Was the feature-NLL comparison fair across families? | found while reading Exp 25's first large-`D` output | **It was not, and is now.** A ReLU map has near-dead units (7 of 65536 below 1e-6 x median variance, one exactly zero), and each family clamped its diagonal at a different floor (LCM `eps` 1e-6 vs 1e-10 elsewhere), which handed the diagonal +35.8 nats/dim at `D=65536`. Degenerate dimensions are now dropped and every family gets one shared, reported floor |
+
+### In flight
+
+| Gap | State |
+|---|---|
+| Exp 25 at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | `cluster/exp25.sbatch` written, code rsynced to the cluster, environment built inside `pytorch_24.12-py3.sif` except a `curvlinops` pin (3.x moved `curvlinops._base`, which the fork imports — now pinned to the laptop's 2.0.1). **Blocked: the gateway began refusing the SSH key mid-session**, after the setup job had already run |
+| Exp 25 locally at `D` up to 65536, 3 seeds | running on this laptop (CPU, float64), the local complement of the cluster run |
+| Library `lowrank` baseline | `asdfghjkl` install in the cluster venv failed; the reason was hidden by `pip --quiet`, since fixed. Still the one library baseline that has never run |
+
+### Promising, identified, not run
+
+1. **Model inversion — the paper's own application.** REMIX uses the fitted covariance to
+   *generate* feature maps for data-free continual learning. Sampling is a structure-only
+   probe by construction: a diagonal produces white-noise feature maps at **any** scale,
+   so no temperature can imitate a smooth sample. This is both the paper's actual use case
+   and the cleanest remaining test of the chain. Needs a GPU; not started.
+2. **The quantitative claim of Tables 1–2** (+0.51 to +1.48 p.p. continual-learning
+   accuracy on CIFAR-100 / Tiny-ImageNet, +0.12/+0.31 on ViT) has never been independently
+   checked. Both datasets are already on the cluster (`cifar-100-python`,
+   `tiny-imagenet-200`). Cost is above the 4-GPU-hour threshold, so it needs an explicit
+   go-ahead.
+3. **Conditional prediction on real data and on a network.** Exp 23 is a synthetic GLM.
+   The same probe on Tecator (Exp 20's loader) and on Exp 21's CNN last layer is
+   laptop-sized and is the obvious next step — it would tell us whether the `rho >= 0.9`
+   threshold is ever met by real features. Exp 21 already measured neighbour |corr| 0.7152
+   against a mean of 0.2529 in a learned map, so this is not a foregone conclusion.
+4. **Why Frobenius loses.** `||A - S||_F^2` weights large eigenvalues and is nearly blind
+   to the small ones that dominate a log-det. If the `lcm_moments` result survives seeds
+   and scale, "fit the chain by moments, not Frobenius" is a one-line constructive
+   improvement to the published method, and the cheapest paper in the vicinity.
+5. **Streaming `Kron` accumulator** so `Laplace(..., hessian_structure="kron_lcm")` reaches
+   `i >= 32k` without materialising `i^2`. Still the most valuable unwritten piece of
+   implementation: Exp 19 showed the estimator itself runs at `i=65536` in 0.188 s, but the
+   library entry point cannot feed it.
+
+### Deferred
+
+- Exps 13/14/15 still use hand-rolled posteriors rather than the library.
+- Exps 10/10b/11 have not been re-run under normalised fitting (Exp 16's correction).
+- `KronLCMDecomposed.bmm` supports exponents 1 and −1 only — the chain has no closed-form
+  square root — so `sample()` goes through perturb-and-solve, untested at scale.
+- Only Exps 23–25 take CLI arguments and write a provenance stamp; Exps 1–22 predate both
+  conventions.
+
 ---
 ---
 

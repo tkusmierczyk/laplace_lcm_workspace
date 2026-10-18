@@ -715,6 +715,51 @@ Laplace (`last_layer_jacobians` is required). Neither affects any recorded resul
 
 ---
 
+### Addendum 2 (this session): the central open problem, solved — and the regime it lives in
+
+The previous addendum ended by saying that no probe in this project separated off-diagonal
+structure from a correctly scaled diagonal, and that finding one was the central open
+problem. It is now solved, and the answer reframes the whole project.
+
+1. **Marginal metrics could never have worked.** A marginal predictive likelihood averages
+   per-point variances, and Exp 17's trace identity fixes their mean at `sigma^2 (1 + d/n)`
+   whatever the covariance structure. Two classes of metric do not average: **conditional
+   (transductive) prediction** and **decisions**. Both are invariant to rescaling the
+   posterior covariance — conditional prediction exactly so in the limit, since
+   `Sigma_QO Sigma_OO^-1` is scale-free — so a temperature cannot touch them.
+2. **Conditional prediction separates (Exp 23).** d=128, n_train=60 < d, 30 seeds, on the
+   exactly scale-invariant estimator, LCM vs diagonal: **−0.4σ at rho=0** (the negative
+   control passes), 0.5σ at rho=0.5, **+6.0σ at rho=0.9** (47% of the diagonal-to-exact gap
+   closed) and **+6.6σ at rho=0.99** (71%). Conditioning improves the exact posterior by
+   14–25%; a diagonal posterior conditions in the *wrong direction* and gets worse
+   (−6.2% at rho=0.9, −17.2% at rho=0.99).
+3. **Decisions separate, and here the oracle temperature cannot rescue the diagonal
+   (Exp 24).** Greedy V-optimal batch active learning, scored by test RMSE, 20 seeds: at
+   rho=0.9 LCM is statistically indistinguishable from the exact posterior (+0.18, 2.3σ)
+   while the **oracle-tempered** diagonal remains +0.66 (6.5σ); tempered-diag minus LCM is
+   +0.4748 ± 0.0883 (**5.4σ**). Selecting with a diagonal posterior is **worse than
+   random** at every correlation level. The mechanism is visible in batch redundancy (mean
+   |cosine| between acquired inputs: 0.274 full, 0.279 LCM, 0.397 diagonal) — scaling every
+   variance leaves redundancy untouched, which is exactly why no temperature helps.
+4. **On real data it holds, but only while the posterior is broad (Exp 26).** Tecator
+   spectra, 10 seeds, each arm at its own oracle scale: at `n=25 < d=100` conditioning is
+   worth **+30.3%** to the exact posterior and the chain closes **83%** of the
+   diagonal-to-exact gap (+0.0391 ± 0.0084, **4.6σ**); at n=60, 48% (1.7σ, not
+   significant); at the full training set conditioning is worth 0.1% to anybody and nothing
+   separates. Exp 23's exactly-scale-free estimator is itself unusable on real features —
+   both real settings have a function-space posterior of **effective rank ~1** (1.03
+   spectra, 1.32 CNN), so noise-free conditioning is an ill-posed extrapolation that hurts
+   every family, the exact posterior worst. On a learned CNN map the chain never separates
+   from a diagonal, exactly as Exp 21's diagnostics predicted.
+
+**What this changes.** The project's predictive case no longer rests on covariate shift
+(which Addendum 1 showed to be a scale effect). It rests on two specific regimes:
+**transductive prediction and batch decisions, with a broad posterior over strongly and
+well-conditionedly correlated inputs.** That is a narrower claim than the project started
+with, and unlike the earlier ones it survives its own controls.
+
+---
+
 ## 10. Appendix — file index & reproduction
 
 **Analysis docs:** `LCM_bayesian_uses.md`, `LCM_laplace_approximation.md`,
