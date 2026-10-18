@@ -1,0 +1,20 @@
+=== (a) ordering fragility: joint-LL vs order accuracy (mean over seeds) ===
+    full=-0.844   diag=-0.865   (chain beats diag only when it is ABOVE diag)
+
+     |Spearman|  joint-LL  beats diag?
+          1.000    -0.853          yes
+          1.000    -0.852          yes
+          1.000    -0.852          yes
+          0.999    -0.858          yes
+          0.998    -0.870           NO
+          0.991    -0.885           NO
+          0.967    -0.892           NO
+
+=== (b) order recovery on PERMUTED data (need |Spearman| ~0.999 to help) ===
+    seed 0: seriation |Spearman|=0.988   learned(best/4) |Spearman|=0.052
+    seed 1: seriation |Spearman|=0.702   learned(best/4) |Spearman|=0.074
+    seed 2: seriation |Spearman|=0.309   learned(best/4) |Spearman|=0.048
+
+    mean: seriation=0.667  learned=0.058  (both far below the ~0.999 the chain needs)
+
+saved exp10b_fragility.csv, exp10b_recovery.csv

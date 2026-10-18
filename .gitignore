@@ -1,0 +1,13 @@
+# The vendored laplace-torch fork is its own git repository (gmum/laplace_lcm,
+# branch lcm-covariance). The root docs and experiments/ are copied into it; do
+# not nest it here.
+Laplace/
+
+# The paper PDF (13 MB) is not ours to version.
+*.pdf
+
+__pycache__/
+*.py[cod]
+
+# Local, machine-specific Claude Code permissions.
+.claude/settings.local.json

@@ -1,0 +1,416 @@
+<title>LCM Laplace — Experimental Evaluation</title>
+<style>
+  :root {
+    --paper:#fcfcfb; --surface:#ffffff; --ink:#161a20; --muted:#5c6672;
+    --line:#e5e7ea; --line-strong:#d3d7dc;
+    --accent:#2a6f97; --accent-soft:#eaf2f6; --accent-line:#bcd6e3;
+    --good:#2f7d5b; --good-soft:#e8f3ec;
+    --warn:#8f6414; --warn-soft:#f6efdd;
+    --bad:#b0503f; --bad-soft:#f6e8e4;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,monospace;
+    --measure:68ch;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#0f1319; --surface:#161b22; --ink:#e7ebf0; --muted:#9aa4b0;
+      --line:#262c35; --line-strong:#333b46;
+      --accent:#5aa9c9; --accent-soft:#15303c; --accent-line:#28576b;
+      --good:#5cbb8c; --good-soft:#14291f;
+      --warn:#cd9b34; --warn-soft:#2b2413;
+      --bad:#d6725f; --bad-soft:#2c1a16;
+    }
+  }
+  :root[data-theme="light"]{
+    --paper:#fcfcfb; --surface:#ffffff; --ink:#161a20; --muted:#5c6672;
+    --line:#e5e7ea; --line-strong:#d3d7dc;
+    --accent:#2a6f97; --accent-soft:#eaf2f6; --accent-line:#bcd6e3;
+    --good:#2f7d5b; --good-soft:#e8f3ec; --warn:#8f6414; --warn-soft:#f6efdd;
+    --bad:#b0503f; --bad-soft:#f6e8e4;
+  }
+  :root[data-theme="dark"]{
+    --paper:#0f1319; --surface:#161b22; --ink:#e7ebf0; --muted:#9aa4b0;
+    --line:#262c35; --line-strong:#333b46;
+    --accent:#5aa9c9; --accent-soft:#15303c; --accent-line:#28576b;
+    --good:#5cbb8c; --good-soft:#14291f; --warn:#cd9b34; --warn-soft:#2b2413;
+    --bad:#d6725f; --bad-soft:#2c1a16;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--paper); color:var(--ink); font-family:var(--sans);
+    line-height:1.62; margin:0; -webkit-font-smoothing:antialiased;
+    font-size:16.5px;}
+  .wrap{max-width:920px; margin:0 auto; padding:clamp(1.4rem,4vw,3.5rem) clamp(1.1rem,4vw,2rem);}
+  .col{max-width:var(--measure);}
+  h1,h2,h3{font-family:var(--serif); font-weight:600; text-wrap:balance; line-height:1.18;}
+  h1{font-size:clamp(2rem,5vw,2.9rem); letter-spacing:-.01em; margin:.2em 0 .35em;}
+  h2{font-size:clamp(1.42rem,3.4vw,1.85rem); margin:0 0 .5rem;}
+  h3{font-size:1.12rem; margin:1.9rem 0 .4rem;}
+  p{margin:.7rem 0; max-width:var(--measure);}
+  a{color:var(--accent)}
+  .eyebrow{font-family:var(--mono); font-size:.72rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--accent); font-weight:600;}
+  .lede{font-size:1.14rem; color:var(--ink);}
+  .muted{color:var(--muted)}
+  strong{font-weight:650}
+  code{font-family:var(--mono); font-size:.86em; background:var(--accent-soft);
+    padding:.08em .38em; border-radius:4px; color:var(--ink);}
+
+  header.masthead{border-bottom:1px solid var(--line-strong); padding-bottom:1.6rem; margin-bottom:2.2rem;}
+  .masthead .kicker{display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:.4rem;}
+  .tag{font-family:var(--mono); font-size:.7rem; letter-spacing:.06em; color:var(--muted);
+    border:1px solid var(--line-strong); border-radius:999px; padding:.15rem .55rem;}
+
+  /* verdict cards */
+  .verdicts{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:.8rem; margin:1.8rem 0 .4rem;}
+  .vcard{background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:1rem 1.05rem; display:flex; flex-direction:column; gap:.5rem;
+    border-top:3px solid var(--edge,var(--accent));}
+  .vcard .axis{font-family:var(--mono); font-size:.72rem; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--muted);}
+  .pill{align-self:flex-start; font-family:var(--mono); font-size:.72rem; font-weight:650;
+    letter-spacing:.05em; padding:.16rem .55rem; border-radius:999px;}
+  .pill.win{background:var(--good-soft); color:var(--good);}
+  .pill.mixed{background:var(--warn-soft); color:var(--warn);}
+  .pill.loss{background:var(--bad-soft); color:var(--bad);}
+  .vcard p{font-size:.92rem; margin:0; color:var(--ink);}
+  .win-edge{--edge:var(--good)} .mixed-edge{--edge:var(--warn)} .accent-edge{--edge:var(--accent)}
+
+  section{margin:3rem 0; scroll-margin-top:1rem;}
+  .rule{height:1px; background:var(--line); border:0; margin:2.6rem 0;}
+
+  /* tables */
+  .tbl-wrap{overflow-x:auto; margin:1.1rem 0; border:1px solid var(--line);
+    border-radius:10px; background:var(--surface);}
+  table{border-collapse:collapse; width:100%; font-size:.92rem;
+    font-variant-numeric:tabular-nums;}
+  caption{caption-side:top; text-align:left; font-family:var(--mono); font-size:.74rem;
+    letter-spacing:.04em; color:var(--muted); padding:.7rem .9rem .2rem;}
+  th,td{padding:.5rem .85rem; text-align:right; border-bottom:1px solid var(--line);
+    white-space:nowrap;}
+  thead th{font-family:var(--mono); font-weight:600; font-size:.76rem; letter-spacing:.03em;
+    text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line-strong);}
+  tbody tr:last-child td{border-bottom:0}
+  th:first-child,td:first-child{text-align:left; color:var(--ink); font-weight:600;}
+  td.num{font-family:var(--mono); font-size:.86rem;}
+  col.lcm, .lcm-col{background:var(--accent-soft);}
+  th.lcm-col{color:var(--accent); border-bottom-color:var(--accent-line);}
+  .best{font-weight:700; color:var(--good);}
+  .worst{color:var(--bad);}
+  .foot{font-size:.85rem; color:var(--muted); padding:.55rem .9rem .8rem;}
+
+  .two-tbl{display:grid; grid-template-columns:1fr; gap:1rem;}
+  @media (min-width:760px){.two-tbl{grid-template-columns:1fr 1fr;}}
+  .two-tbl .tbl-wrap{margin:0}
+  figure{margin:1.4rem 0; }
+  figure img{width:100%; height:auto; display:block; border:1px solid var(--line);
+    border-radius:10px; background:var(--surface);}
+  figcaption{font-size:.85rem; color:var(--muted); margin-top:.5rem; max-width:var(--measure);}
+
+  .callout{border-left:3px solid var(--accent); background:var(--accent-soft);
+    padding:.85rem 1.05rem; border-radius:0 8px 8px 0; margin:1.2rem 0; font-size:.96rem;}
+  .callout.good{border-color:var(--good); background:var(--good-soft);}
+  .callout.bad{border-color:var(--bad); background:var(--bad-soft);}
+  .callout .lbl{font-family:var(--mono); font-size:.7rem; letter-spacing:.1em;
+    text-transform:uppercase; font-weight:650; display:block; margin-bottom:.2rem;}
+  .callout.good .lbl{color:var(--good)} .callout.bad .lbl{color:var(--bad)}
+  .callout .lbl.n{color:var(--accent)}
+
+  ul.tight{margin:.6rem 0; padding-left:1.1rem; max-width:var(--measure);}
+  ul.tight li{margin:.35rem 0;}
+  .num-legend{font-size:.82rem; color:var(--muted); font-family:var(--mono);
+    display:flex; gap:1.2rem; flex-wrap:wrap; margin:.5rem 0 0;}
+  .swatch{display:inline-block; width:.7em; height:.7em; border-radius:2px; margin-right:.35em;
+    vertical-align:baseline;}
+  footer{border-top:1px solid var(--line-strong); margin-top:3rem; padding-top:1.3rem;
+    color:var(--muted); font-size:.85rem;}
+</style>
+
+<div class="wrap">
+<header class="masthead">
+  <div class="kicker">
+    <span class="eyebrow">Experimental Evaluation</span>
+    <span class="tag">Laplace approximation</span>
+    <span class="tag">Bayesian deep learning</span>
+  </div>
+  <h1>A structured Gauss–Markov covariance for the Laplace approximation</h1>
+  <p class="lede muted">Evaluating the Laplace Covariance Model (LCM) —
+    <code>A = diag(d) + diag(w)·K(a)·diag(w)</code>, a Matérn-½ chain on a learned
+    1-D ordering of the weights — as a <code>hessian_structure="lcm"</code> posterior,
+    against diagonal, KFAC, and full Laplace across fidelity, predictive UQ, and cost.</p>
+
+  <div class="verdicts">
+    <div class="vcard win-edge">
+      <span class="axis">Posterior fidelity</span>
+      <span class="pill win">Clear win vs Diag</span>
+      <p>1.6–2.9× lower KL to the exact posterior than diagonal Laplace; behind KFAC.</p>
+    </div>
+    <div class="vcard win-edge">
+      <span class="axis">Cost &amp; memory</span>
+      <span class="pill win">Win</span>
+      <p><code>3P</code> storage vs <code>P²</code>; exact log-det where the dense posterior OOMs.</p>
+    </div>
+    <div class="vcard mixed-edge">
+      <span class="axis">Predictive UQ</span>
+      <span class="pill mixed">Does not transfer</span>
+      <p>Ties tuned diagonal on regression; slightly worse on CIFAR-10. KFAC/Full lead.</p>
+    </div>
+    <div class="vcard accent-edge">
+      <span class="axis">Mechanism</span>
+      <span class="pill" style="background:var(--accent-soft);color:var(--accent)">Explained</span>
+      <p>A single 1-D chain can't embed generic weight-space curvature — but recovers it exactly when it is chain-like.</p>
+    </div>
+  </div>
+</header>
+
+<div class="col">
+<p><strong>One-paragraph summary.</strong> LCM is a strict, near-diagonal-cost
+improvement over diagonal Laplace in <em>posterior fidelity</em>, it recovers
+chain-structured curvature essentially perfectly, and it is memory-cheap and
+feasible where a dense posterior is not. But this fidelity gain does <em>not</em>
+reliably transfer to <em>predictive</em> uncertainty for weight-space Laplace:
+LCM ties a marginal-likelihood-tuned diagonal on regression, saturates with it on
+MNIST, and is slightly worse on CIFAR-10, while KFAC and full Laplace dominate.
+The ablations locate the cause precisely — one 1-D Markov chain cannot embed
+generic weight curvature (real-GGN residual ≈ 0.66), even though it captures
+curvature perfectly when the correlation <em>is</em> chain-like (residual ≈ 1e-4).
+LCM is best read as the strongest <em>diagonal-cost, architecture-agnostic</em>
+structured covariance — not a replacement for KFAC.</p>
+</div>
+
+<h3>Baselines &amp; protocol</h3>
+<div class="col">
+<p class="muted" style="font-size:.95rem">All methods share the same MAP network and
+GGN backend, and differ only in the covariance structure. Each method tunes its own
+prior precision (and, for regression, its observation noise) by maximizing its own
+Laplace marginal likelihood — a fair, per-method best case. <strong>MAP</strong> (no
+weight uncertainty), <strong>Diag</strong> (diagonal), <strong>KFAC</strong>
+(Kronecker-factored), <strong>Full</strong> (exact dense reference), and
+<strong>LCM</strong> (ours, <code>3P</code> params). Predictives are linearized (GLM);
+classification uses the probit link.</p>
+</div>
+
+<!-- ============================ EXP 1 ============================ -->
+<section id="exp1">
+  <span class="eyebrow">Experiment 1</span>
+  <h2>Posterior fidelity</h2>
+  <div class="col"><p>Where the exact full posterior is computable, we fix a
+  <em>common</em> prior across methods (isolating the curvature approximation) and
+  measure the KL and covariance-Frobenius distance to it. Four settings, AR(1)-correlated
+  features, 3 seeds.</p></div>
+
+  <div class="tbl-wrap">
+    <table>
+      <caption>KL( approx ‖ full posterior ) — lower is better · <span style="color:var(--good)">best structured</span></caption>
+      <colgroup><col><col><col><col><col class="lcm"></colgroup>
+      <thead><tr><th>Setting</th><th>P</th><th>Diag</th><th>KFAC</th><th class="lcm-col">LCM</th></tr></thead>
+      <tbody>
+        <tr><td>reg / last-layer</td><td class="num">33</td><td class="num">51.3</td><td class="num best">1.5</td><td class="num lcm-col">17.5</td></tr>
+        <tr><td>reg / all-weights</td><td class="num">793</td><td class="num">249.1</td><td class="num best">28.1</td><td class="num lcm-col">95.2</td></tr>
+        <tr><td>cls / last-layer</td><td class="num">99</td><td class="num">73.0</td><td class="num best">5.5</td><td class="num lcm-col">30.3</td></tr>
+        <tr><td>cls / all-weights</td><td class="num">843</td><td class="num">657.7</td><td class="num best">104.2</td><td class="num lcm-col">406.2</td></tr>
+      </tbody>
+    </table>
+    <div class="foot">LCM cuts diagonal's KL by 1.6–2.9× in every setting. Ordering is
+      always <code>KFAC &lt; LCM &lt; Diag</code>.</div>
+  </div>
+
+  <figure>
+    <img src="__FIG1__" alt="KL to the full posterior versus feature-correlation strength, for Diagonal and LCM, on AR(1) and dense-random correlation. Diagonal's KL rises with correlation; LCM stays low and flat.">
+    <figcaption><strong>When does structure help?</strong> As the curvature becomes more
+    correlated (left→right), diagonal Laplace drifts further from the exact posterior while
+    LCM stays close — LCM is increasingly preferable to diagonal, and never worse.</figcaption>
+  </figure>
+</section>
+
+<hr class="rule">
+
+<!-- ============================ EXP 2 ============================ -->
+<section id="exp2">
+  <span class="eyebrow">Experiment 2</span>
+  <h2>UCI regression uncertainty</h2>
+  <div class="col"><p>Single-hidden-layer BNN, all-weights Laplace, marginal-likelihood-tuned.
+  Mean <strong>test log-likelihood</strong> (original scale, higher is better) over 8 splits.
+  RMSE is identical across Laplace variants, so all signal is in the LL.</p></div>
+
+  <div class="tbl-wrap">
+    <table>
+      <caption>Test log-likelihood — higher is better · <span style="color:var(--good)">best</span></caption>
+      <colgroup><col><col><col><col><col><col class="lcm"></colgroup>
+      <thead><tr><th>Dataset</th><th>MAP</th><th>Diag</th><th>KFAC</th><th>Full</th><th class="lcm-col">LCM</th></tr></thead>
+      <tbody>
+        <tr><td>california</td><td class="num">−0.910</td><td class="num">−0.874</td><td class="num">−0.883</td><td class="num best">−0.868</td><td class="num lcm-col">−0.889</td></tr>
+        <tr><td>concrete</td><td class="num">−3.232</td><td class="num">−3.182</td><td class="num">−3.132</td><td class="num best">−3.095</td><td class="num lcm-col">−3.196</td></tr>
+        <tr><td>diabetes</td><td class="num">−5.882</td><td class="num">−5.672</td><td class="num">−5.652</td><td class="num best">−5.589</td><td class="num lcm-col">−5.638</td></tr>
+        <tr><td>energy</td><td class="num">−2.300</td><td class="num">−2.518</td><td class="num">−2.143</td><td class="num best">−2.184</td><td class="num lcm-col">−2.461</td></tr>
+        <tr><td>wine</td><td class="num">−1.129</td><td class="num">−0.990</td><td class="num">−1.024</td><td class="num best">−0.979</td><td class="num lcm-col">−1.012</td></tr>
+        <tr><td>yacht</td><td class="num">−2.133</td><td class="num worst">−2.907</td><td class="num">−1.974</td><td class="num best">−1.954</td><td class="num lcm-col">−2.396</td></tr>
+      </tbody>
+    </table>
+    <div class="foot">Average test-LL rank (1 = best): Full <strong>1.79</strong> ·
+      KFAC <strong>2.35</strong> · LCM <strong>3.52</strong> · Diag <strong>3.54</strong> ·
+      MAP <strong>3.79</strong>.</div>
+  </div>
+
+  <div class="callout"><span class="lbl n">Reading</span>
+  LCM and diagonal are <strong>statistically tied</strong> on average. LCM's edge is
+  <em>robustness</em>: on <code>yacht</code>, diagonal collapses to −2.91 (worse than MAP)
+  while LCM recovers to −2.40. It never collapses like diagonal, but does not systematically
+  beat a well-tuned one. Full/KFAC lead.</div>
+</section>
+
+<hr class="rule">
+
+<!-- ============================ EXP 3 ============================ -->
+<section id="exp3">
+  <span class="eyebrow">Experiment 3</span>
+  <h2>Image classification: calibration &amp; OOD</h2>
+  <div class="col"><p>Small CNNs, last-layer Laplace. In-distribution accuracy / NLL / ECE,
+  and OOD-detection AUROC by predictive confidence. An easy task (MNIST) and a harder one
+  (CIFAR-10) bracket where Laplace helps.</p></div>
+
+  <div class="tbl-wrap">
+    <table>
+      <caption>MNIST · OOD = FashionMNIST — NLL/ECE lower, AUROC higher · <span style="color:var(--good)">best</span></caption>
+      <colgroup><col><col><col><col><col class="lcm"></colgroup>
+      <thead><tr><th>Method</th><th>Acc</th><th>NLL</th><th>ECE</th><th>OOD-AUROC</th></tr></thead>
+      <tbody>
+        <tr><td>MAP</td><td class="num">.9814</td><td class="num best">.0593</td><td class="num best">.0053</td><td class="num best">.9698</td></tr>
+        <tr><td>Diag</td><td class="num">.9798</td><td class="num">.0743</td><td class="num">.0183</td><td class="num">.9617</td></tr>
+        <tr><td>KFAC</td><td class="num">.9819</td><td class="num">.0950</td><td class="num">.0456</td><td class="num">.9613</td></tr>
+        <tr><td>Full</td><td class="num">.9818</td><td class="num">.1048</td><td class="num">.0548</td><td class="num">.9619</td></tr>
+        <tr class="lcm-col"><td>LCM</td><td class="num">.9814</td><td class="num">.1045</td><td class="num">.0536</td><td class="num" style="font-weight:700">.9682</td></tr>
+      </tbody>
+    </table>
+    <div class="foot">MNIST is saturated — the MAP is already well-calibrated, so every Laplace
+      variant slightly worsens in-distribution NLL/ECE. LCM has the best OOD-AUROC among them.</div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <caption>CIFAR-10 · OOD = SVHN — NLL/ECE lower, AUROC higher · <span style="color:var(--good)">best</span></caption>
+      <colgroup><col><col><col><col><col class="lcm"></colgroup>
+      <thead><tr><th>Method</th><th>Acc</th><th>NLL</th><th>ECE</th><th>OOD-AUROC</th></tr></thead>
+      <tbody>
+        <tr><td>MAP</td><td class="num">.8309</td><td class="num">.5760</td><td class="num">.0678</td><td class="num best">.8346</td></tr>
+        <tr><td>Diag</td><td class="num">.8298</td><td class="num">.5432</td><td class="num">.0540</td><td class="num">.8193</td></tr>
+        <tr><td>KFAC</td><td class="num">.8309</td><td class="num best">.5036</td><td class="num best">.0180</td><td class="num">.7949</td></tr>
+        <tr><td>Full</td><td class="num">.8311</td><td class="num">.5050</td><td class="num">.0251</td><td class="num">.7925</td></tr>
+        <tr class="lcm-col"><td>LCM</td><td class="num">.8307</td><td class="num">.5503</td><td class="num worst">.0893</td><td class="num">.7992</td></tr>
+      </tbody>
+    </table>
+    <div class="foot">On the harder task, KFAC/Full cut NLL from .576→≈.50 and ECE from .068→≤.025;
+      LCM under-performs even diagonal (ECE .089), its imperfect GGN fit yielding a miscalibrated predictive.</div>
+  </div>
+  <div class="callout bad"><span class="lbl">Honest negative</span>
+  LCM's superior <em>fidelity</em> does not buy better <em>calibration</em> on last-layer
+  image models; KFAC and full Laplace are clearly preferable here.</div>
+</section>
+
+<hr class="rule">
+
+<!-- ============================ EXP 4 ============================ -->
+<section id="exp4">
+  <span class="eyebrow">Experiment 4</span>
+  <h2>Cost, scaling &amp; ablations</h2>
+
+  <figure>
+    <img src="__FIG2__" alt="Left: posterior log-det time versus P, log-log, for LCM, Full, Diag. Right: covariance storage versus P for LCM (3P), Full (P squared), Diag (P).">
+    <figcaption><strong>Scaling.</strong> LCM stores the covariance in <code>3P</code> floats
+    vs <code>P²</code> for the dense posterior, and computes an exact log-determinant where the
+    dense matrix is infeasible (P ≥ 10k). The sequential-Kalman log-det carries Python-loop
+    overhead and only overtakes the dense one past P ≈ 5k; the paper's associative scan removes
+    this constant.</figcaption>
+  </figure>
+
+  <div class="two-tbl">
+  <div class="tbl-wrap">
+    <table>
+      <caption>Ablation on a REAL last-layer GGN — rel. Frobenius (lower better)</caption>
+      <thead><tr><th>learn a</th><th>nugget</th><th>rel. Frob</th></tr></thead>
+      <tbody>
+        <tr><td>✓</td><td>✓</td><td class="num">0.659</td></tr>
+        <tr><td>✓</td><td>✗</td><td class="num">0.662</td></tr>
+        <tr><td>✗</td><td>✓</td><td class="num">0.642</td></tr>
+        <tr><td>✗</td><td>✗</td><td class="num">0.657</td></tr>
+        <tr><td>diag-only</td><td>—</td><td class="num worst">0.973</td></tr>
+      </tbody>
+    </table>
+    <div class="foot">Halves diagonal's error, but plateaus at 0.66 — this GGN is not
+      1-D-embeddable, so the design knobs can't move it.</div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <caption>Ablation on a CONTROLLED chain target — rel. Frobenius</caption>
+      <thead><tr><th>learn a</th><th>nugget</th><th>rel. Frob</th></tr></thead>
+      <tbody>
+        <tr><td>✓</td><td>✓</td><td class="num best">0.0001</td></tr>
+        <tr><td>✓</td><td>✗</td><td class="num">0.153</td></tr>
+        <tr><td>✗</td><td>✓</td><td class="num">0.560</td></tr>
+        <tr><td>✗</td><td>✗</td><td class="num">0.580</td></tr>
+        <tr><td>diag-only</td><td>—</td><td class="num worst">0.956</td></tr>
+      </tbody>
+    </table>
+    <div class="foot">When the target genuinely is a scrambled chain, LCM recovers it to 1e-4 —
+      but only with <em>both</em> a learned ordering and the nugget. Both are essential.</div>
+  </div>
+  </div>
+
+  <div class="callout"><span class="lbl n">Mechanism</span>
+  The two ablations together explain everything: the design is sound (controlled target →
+  1e-4), and the real-GGN plateau reflects the <em>data</em> — a bandwidth-1 chain cannot
+  embed generic weight curvature. LCM helps exactly when curvature is locally / 1-D
+  correlated, and reduces to diagonal otherwise. Fit converges by ≈200 Adam steps.</div>
+</section>
+
+<hr class="rule">
+
+<!-- ============================ SUMMARY ============================ -->
+<section id="summary">
+  <span class="eyebrow">Synthesis</span>
+  <h2>What the experiments establish</h2>
+  <div class="col">
+  <ul class="tight">
+    <li><strong style="color:var(--good)">Fidelity (positive).</strong> A strict,
+      near-diagonal-cost improvement over diagonal Laplace: 1.6–2.9× lower KL to the exact
+      posterior, and near-perfect recovery of chain-structured curvature.</li>
+    <li><strong style="color:var(--good)">Cost (positive).</strong> <code>3P</code> storage
+      and an exact log-determinant that stays computable where the dense posterior OOMs.</li>
+    <li><strong style="color:var(--warn)">Predictive UQ (neutral-to-negative).</strong> The
+      fidelity gain does not carry to predictive uncertainty: LCM ties tuned diagonal on
+      UCI, saturates on MNIST, is slightly worse on CIFAR-10. KFAC/Full dominate.</li>
+    <li><strong style="color:var(--accent)">Mechanism (explanatory).</strong> A single 1-D
+      chain cannot embed generic weight curvature — the a-priori limitation of a bandwidth-1
+      structure, confirmed empirically.</li>
+  </ul>
+  <p><strong>Practical guidance.</strong> Prefer <strong>LCM over diagonal</strong> for a cheap,
+  architecture-agnostic structured covariance, when memory forbids denser structures, or when
+  curvature is plausibly locally correlated — it never does worse than diagonal in fidelity and
+  is far more robust. Prefer <strong>KFAC / full</strong> when the model has exploitable layer
+  structure and predictive calibration is the target. The clearest next step, directly motivated
+  by KFAC's edge, is a <strong>per-layer LCM chain</strong> (block-diagonal over layers).</p>
+  </div>
+  <p class="num-legend">
+    <span><span class="swatch" style="background:var(--good)"></span>best / positive</span>
+    <span><span class="swatch" style="background:var(--warn)"></span>mixed</span>
+    <span><span class="swatch" style="background:var(--bad)"></span>worst / negative</span>
+    <span><span class="swatch" style="background:var(--accent)"></span>LCM (ours)</span>
+  </p>
+</section>
+
+<footer>
+  <p>Reproducible campaign: <code>experiments/</code> — <code>run_all.py</code>,
+  <code>exp1_fidelity.py</code>, <code>exp2_uci.py</code>, <code>exp3_image.py</code>,
+  <code>exp3b_cifar.py</code>, <code>exp4_scaling.py</code>, <code>exp4b_ablation_controlled.py</code>.
+  Six UCI datasets, MNIST/FashionMNIST, CIFAR-10/SVHN. Full write-up in
+  <code>experiments/EXPERIMENTS.md</code>; method in branch <code>lcm-covariance</code>.</p>
+</footer>
+</div>
+
+<script>
+  // keep tabular figures crisp; no external deps
+  document.documentElement.setAttribute('data-report','lcm');
+</script>

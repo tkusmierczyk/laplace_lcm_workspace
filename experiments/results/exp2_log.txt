@@ -1,0 +1,46 @@
+[diabetes] N=442 d=10
+    MAP    LL=-5.882  RMSE=64.449
+    Diag   LL=-5.672  RMSE=64.449
+    KFAC   LL=-5.652  RMSE=64.449
+    Full   LL=-5.589  RMSE=64.449
+    LCM    LL=-5.638  RMSE=64.449
+[california] N=20640 d=8
+    MAP    LL=-0.910  RMSE=0.587
+    Diag   LL=-0.874  RMSE=0.587
+    KFAC   LL=-0.883  RMSE=0.587
+    Full   LL=-0.868  RMSE=0.587
+    LCM    LL=-0.889  RMSE=0.587
+[concrete] N=1030 d=8
+    MAP    LL=-3.232  RMSE=5.539
+    Diag   LL=-3.182  RMSE=5.539
+    KFAC   LL=-3.132  RMSE=5.539
+    Full   LL=-3.095  RMSE=5.539
+    LCM    LL=-3.196  RMSE=5.539
+[energy] N=768 d=9
+    MAP    LL=-2.300  RMSE=2.228
+    Diag   LL=-2.518  RMSE=2.228
+    KFAC   LL=-2.143  RMSE=2.228
+    Full   LL=-2.184  RMSE=2.228
+    LCM    LL=-2.461  RMSE=2.228
+[yacht] N=308 d=6
+    MAP    LL=-2.133  RMSE=1.818
+    Diag   LL=-2.907  RMSE=1.818
+    KFAC   LL=-1.974  RMSE=1.818
+    Full   LL=-1.954  RMSE=1.818
+    LCM    LL=-2.396  RMSE=1.818
+[wine] N=1599 d=11
+    MAP    LL=-1.129  RMSE=0.659
+    Diag   LL=-0.990  RMSE=0.659
+    KFAC   LL=-1.024  RMSE=0.659
+    Full   LL=-0.979  RMSE=0.659
+    LCM    LL=-1.012  RMSE=0.659
+
+=== Average test-LL rank across datasets/splits (1 = best) ===
+method
+Full    1.791667
+KFAC    2.354167
+LCM     3.520833
+Diag    3.541667
+MAP     3.791667
+
+saved exp2_uci_{raw,summary,avgrank}.csv

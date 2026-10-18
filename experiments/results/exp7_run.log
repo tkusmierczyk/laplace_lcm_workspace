@@ -1,0 +1,28 @@
+=== LCM vs Diag vs exact Full for a 1-D-correlated GLM (rho=0.9, n=3000) ===
+    (test-LL higher=better; pred-var rel.err vs exact posterior lower=better)
+
+  d=   500 | test-LL  diag=-0.814  lcm=-0.814  full=-0.814  | pred-var rel.err  diag=0.033  lcm=0.039  | LCM fit 17.7s
+  d=  1000 | test-LL  diag=-0.943  lcm=-0.944  full=-0.938  | pred-var rel.err  diag=0.111  lcm=0.128  | LCM fit 142.3s   d=  2000 | test-LL  diag=-1.335  lcm=-1.348  full=-1.250  | pred-var rel.err  diag=0.441  lcm=0.460  | LCM fit 351.6s
+Traceback (most recent call last):
+  File "/home/tom/prjs/laplace_bayes/experiments/exp7_correlated_glm.py", line 149,  d= 10000 | test-LL  diag=-1.227  lcm=-1.212  full=-4.592  | pred-var rel.err  diag=0.999  lcm=0.999  | LCM fit 284.7s
+  d= 20000 | test-LL  diag=-1.508  lcm=-1.491  full=-5.283  | pred-var rel.err  diag=1.000  lcm=1.000  | LCM fit 707.6s
+
+saved exp7_correlated_glm.csv
+ne 121, in run
+    lcm = fit_lcm_to_ggn(V, ggn_diag, rho, steps=lcm_steps)
+  File "/home/tom/prjs/laplace_bayes/experiments/exp7_correlated_glm.py", line 97, in fit_lcm_to_ggn
+    lcm.fit_frobenius(V, n_steps=steps, lr=lr, batch_size=batch_size)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tom/prjs/laplace_bayes/Laplace/laplace/lcm.py", line 485, in fit_frobenius
+    vectors = vectors.to(self.a.dtype)
+                    ~~~~^^^^^^^^^^^^^^
+  File "/home/tom/prjs/laplace_bayes/Laplace/laplace/lcm.py", line 235, in kernel_matvec
+    sorting the coordinates, ``y_i = L_i + x_i + R_i`` where ``L_i`` (resp.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ``R_i``) accumulates the exponentially-decaying contributions from
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tom/prjs/laplace_bayes/Laplace/laplace/lcm.py", line 199, in _decaying_prefix
+    # Split the (ascending) coordinates into contiguous blocks whose internal range
+    # is <= _BLOCK_RANGE, so the fast offset trick is safe *within* a block, and
+    # carry the running accumulator across blocks rescaled to each block's origin
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 116.00 MiB. GPU 0 has a total capacity of 7.62 GiB of which 96.06 MiB is free. Including non-PyTorch memory, this process has 2.70 GiB memory in use. Process 293817 has 4.80 GiB memory in use. Of the allocated memory 2.47 GiB is allocated by PyTorch, and 81.95 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

@@ -1,0 +1,14 @@
+- analiza modeli o podobnej wymiarowości, w klasie tej samej wymiarowości np AA^T które dają potrójną diagonalę
+- zweryfikować wymiarość vs KFAC
+- zweryfikować vs low-rank -> jeżeli przegramy z lr to nie ma sensu iść w wyższy wymiar
+
+ - może pobawić się learning-rank żeby podbić uczenie? 
+
+
+- warstwy o wymiarze 10k
+- sortowanie: sprawdzić czy sterowanie diagonalą z dużego epsilona w dół (a'la wyżarzanie) 
+  - albo odmrozić kiedy się ustabilizuje, żeby każda współrzędna mogła się uczyć niezależnie
+- na potem: złożenie macierzy kowariancji np. jako ważona suma? iloczyny?
+
+
+- zaktualizować opis eksperymentów w github

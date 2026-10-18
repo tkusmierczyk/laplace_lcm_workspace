@@ -1,0 +1,22 @@
+[natural  seed 0] joint-LL  full=-0.883  diag=-0.927  fix-nat=-0.903  fix-seri=-0.948  learned=-0.903  | order-recov(rho)=1.00
+[natural  seed 1] joint-LL  full=-0.876  diag=-0.909  fix-nat=-0.893  fix-seri=-0.936  learned=-0.893  | order-recov(rho)=1.00
+[natural  seed 2] joint-LL  full=-0.856  diag=-0.876  fix-nat=-0.860  fix-seri=-0.905  learned=-0.860  | order-recov(rho)=1.00
+[permuted seed 0] joint-LL  full=-0.883  diag=-0.927  fix-nat=-0.927  fix-seri=-0.948  learned=-0.953  | order-recov(rho)=0.03
+[permuted seed 1] joint-LL  full=-0.876  diag=-0.909  fix-nat=-0.909  fix-seri=-0.936  learned=-0.936  | order-recov(rho)=0.05
+[permuted seed 2] joint-LL  full=-0.856  diag=-0.876  fix-nat=-0.876  fix-seri=-0.905  learned=-0.904  | order-recov(rho)=0.00
+
+=== JOINT predictive test-LL, mean over seeds (higher=better) ===
+
+[natural]  full=-0.872  diag=-0.904
+    lcm_fixed_nat    joint-LL=-0.885  gap-closed=   58%
+    lcm_fixed_seri   joint-LL=-0.930  gap-closed=  -79%
+    lcm_learned      joint-LL=-0.885  gap-closed=   59%
+    order recovery (|Spearman| of learned coord vs latent order): 1.00
+
+[permuted]  full=-0.872  diag=-0.904
+    lcm_fixed_nat    joint-LL=-0.904  gap-closed=    0%
+    lcm_fixed_seri   joint-LL=-0.930  gap-closed=  -79%
+    lcm_learned      joint-LL=-0.931  gap-closed=  -84%
+    order recovery (|Spearman| of learned coord vs latent order): 0.03
+
+saved experiments/results/exp10_ordering.csv

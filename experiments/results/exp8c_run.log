@@ -1,0 +1,18 @@
+=== Joint vs marginal predictive test-LL, mean +/- 95% CI (10 seeds) ===
+
+d = 500
+  marg  : diag=-0.823+/-0.016   lcm=-0.826+/-0.017   full=-0.823+/-0.016
+  joint : diag=-0.830+/-0.017   lcm=-0.823+/-0.017   full=-0.820+/-0.015
+  joint gap-to-full closed by LCM: 62% +/- 49%
+
+d = 1000
+  marg  : diag=-0.922+/-0.025   lcm=-0.933+/-0.029   full=-0.919+/-0.023
+  joint : diag=-0.946+/-0.026   lcm=-0.927+/-0.027   full=-0.907+/-0.020
+  joint gap-to-full closed by LCM: 52% +/- 16%
+
+d = 1500
+  marg  : diag=-1.076+/-0.029   lcm=-1.110+/-0.035   full=-1.057+/-0.022
+  joint : diag=-1.116+/-0.029   lcm=-1.097+/-0.032   full=-1.033+/-0.019
+  joint gap-to-full closed by LCM: 23% +/- 12%
+
+saved experiments/results/exp8c_joint_ci.csv

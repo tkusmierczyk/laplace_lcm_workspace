@@ -1,0 +1,11 @@
+=== LCM vs Diag vs exact Full for a 1-D-correlated GLM (rho=0.9, n=3000) ===
+    (test-LL higher=better; pred-var rel.err vs exact posterior lower=better)
+
+  d=   500 | test-LL  diag=-0.814  lcm=-0.814  full=-0.814  | pred-var rel.err  diag=0.033  lcm=0.039  | LCM fit 4.3s
+  d=  1000 | test-LL  diag=-0.943  lcm=-0.944  full=-0.938  | pred-var rel.err  diag=0.111  lcm=0.128  | LCM fit 11.6s
+  d=  2000 | test-LL  diag=-1.335  lcm=-1.348  full=-1.250  | pred-var rel.err  diag=0.441  lcm=0.460  | LCM fit 27.6s
+  d=  5000 | test-LL  diag=-1.303  lcm=-1.308  full=-3.736  | pred-var rel.err  diag=0.998  lcm=0.998  | LCM fit 86.9s
+  d= 10000 | test-LL  diag=-1.227  lcm=-1.212  full=-4.592  | pred-var rel.err  diag=0.999  lcm=0.999  | LCM fit 244.4s
+  d= 20000 | test-LL  diag=-1.508  lcm=-1.491  full=-5.283  | pred-var rel.err  diag=1.000  lcm=1.000  | LCM fit 887.8s
+
+saved exp7_correlated_glm.csv
