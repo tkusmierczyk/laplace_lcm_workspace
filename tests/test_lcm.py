@@ -439,3 +439,173 @@ def test_lcm_laplace_accepts_known_and_frozen_ordering():
 
     with pytest.raises(ValueError, match="lcm_init_a has shape"):
         run(lcm_init_a=torch.zeros(d + 1, dtype=torch.float64))
+
+
+# ---------------------------------------------------------------------------
+# Kron x LCM: the one-factor eigen reduction
+# ---------------------------------------------------------------------------
+def _lcm_target(dim, seed=0, span=6.0):
+    g = torch.Generator().manual_seed(seed)
+    a = torch.sort(torch.rand(dim, generator=g, dtype=torch.float64) * span)[0]
+    w = torch.rand(dim, generator=g, dtype=torch.float64) + 0.5
+    d = torch.rand(dim, generator=g, dtype=torch.float64) + 0.1
+    A = torch.diag(d) + w[:, None] * torch.exp(-(a[:, None] - a[None, :]).abs()) * w[None, :]
+    return a, w, d, A
+
+
+@pytest.mark.parametrize("dim", [1, 2, 7, 64, 300])
+def test_kalman_solve_matches_dense(dim):
+    """The O(dim) solve must agree with a dense solve, for any coordinate order."""
+    from laplace.lcm import kalman_solve
+
+    a, w, d, A = _lcm_target(dim)
+    Y = torch.randn(3, 4, dim, dtype=torch.float64, generator=torch.Generator().manual_seed(1))
+    ref = torch.linalg.solve(A, Y.reshape(-1, dim).T).T.reshape(Y.shape)
+    assert torch.allclose(kalman_solve(a, w, d, Y), ref, atol=1e-10)
+
+    perm = torch.randperm(dim, generator=torch.Generator().manual_seed(2))
+    got = kalman_solve(a[perm], w[perm], d[perm], Y[..., perm])
+    assert torch.allclose(got, ref[..., perm], atol=1e-10)
+
+
+def test_kalman_solve_preserves_legacy_contract():
+    """`kalman_stats` must keep returning a 2-tuple unless asked for the internals."""
+    a, w, d, _ = _lcm_target(32)
+    y = torch.randn(5, 32, dtype=torch.float64)
+    assert len(kalman_stats(a, w, d, y)) == 2
+    assert len(kalman_stats(a, w, d, y, return_filter=True)) == 6
+    assert len(kalman_stats(a, w, d, None, return_filter=True)) == 6
+
+
+def test_fit_moments_is_exact_on_an_lcm_target():
+    """The closed-form three-band estimator recovers an LCM exactly on the interior.
+
+    The two endpoint amplitudes are genuinely not identified by three bands, so error
+    is expected there and nowhere else.
+    """
+    dim = 60
+    _, _, _, A = _lcm_target(dim)
+    ev, V = torch.linalg.eigh(A)
+    X = (V * ev.sqrt()) @ V.T  # X^T X == A, with dim rows, so the target is A / dim
+    m = LCMCovariance(dim).fit_moments(X)
+    E = m.dense() * dim - A
+    interior = slice(1, -1)
+    assert E[interior, interior].norm() / A[interior, interior].norm() < 1e-10
+    # and the moments-only entry point must agree exactly
+    s0, s1, s2 = (X * X).mean(0), (X[:, :-1] * X[:, 1:]).mean(0), (X[:, :-2] * X[:, 2:]).mean(0)
+    assert torch.allclose(LCMCovariance(dim).fit_moments(moments=(s0, s1, s2)).dense(), m.dense())
+
+
+def test_fit_moments_is_order_equivariant():
+    """Permuting the columns and declaring the order must give the same matrix back."""
+    dim = 40
+    _, _, _, A = _lcm_target(dim, seed=3)
+    ev, V = torch.linalg.eigh(A)
+    X = (V * ev.sqrt()) @ V.T
+    perm = torch.randperm(dim, generator=torch.Generator().manual_seed(4))
+    m = LCMCovariance(dim).fit_moments(X)
+    mp = LCMCovariance(dim).fit_moments(X[:, perm], order=torch.argsort(perm))
+    assert torch.allclose(mp.dense(), m.dense()[perm][:, perm], atol=1e-12)
+
+
+def _kron_setup(dtype=torch.float64):
+    torch.manual_seed(0)
+    N, I, H, C = 200, 24, 16, 4
+    X, y = torch.randn(N, I, dtype=dtype), torch.randint(0, C, (N,))
+    model = nn.Sequential(nn.Linear(I, H), nn.Tanh(), nn.Linear(H, C)).to(dtype)
+    return DataLoader(TensorDataset(X, y), batch_size=50), model, X
+
+
+def test_kron_lcm_registers_in_the_factory():
+    _, model, _ = _kron_setup()
+    for subset in ("all", "last_layer"):
+        la = Laplace(model, "classification", subset_of_weights=subset,
+                     hessian_structure="kron_lcm")
+        assert la._key == (subset, "kron_lcm")
+
+
+def test_kron_lcm_dense_fallback_reproduces_kron():
+    """With no layer structured, the new precision object must be exactly KronLaplace.
+
+    This pins the whole plumbing -- scale, deltas, the rotation, the parameter
+    layout -- independently of the LCM approximation itself.
+    """
+    dl, model, X = _kron_setup()
+
+    def fit(structure, **kw):
+        la = Laplace(model, "classification", subset_of_weights="last_layer",
+                     hessian_structure=structure, **kw)
+        la.fit(dl)
+        return la
+
+    kron, lcm = fit("kron"), fit("kron_lcm", lcm_layers=[])
+    Js = kron.backend.last_layer_jacobians(X[:5])[0]
+    assert Js.abs().max() > 0  # guard: zero Jacobians would make this vacuous
+    assert torch.allclose(kron.posterior_precision.logdet(), lcm.posterior_precision.logdet())
+    assert torch.allclose(kron.log_marginal_likelihood(), lcm.log_marginal_likelihood())
+    assert torch.allclose(kron.functional_variance(Js), lcm.functional_variance(Js))
+    assert torch.allclose(kron.functional_covariance(Js), lcm.functional_covariance(Js))
+    assert torch.allclose(kron(X[:20]), lcm(X[:20]))
+
+
+@pytest.mark.parametrize("order", ["natural", "seriate"])
+def test_kron_lcm_reduction_matches_its_dense_form(order):
+    """The reduction must be exact: every quantity has to agree with the dense
+    materialisation of the same structured precision."""
+    dl, model, X = _kron_setup()
+    la = Laplace(model, "classification", subset_of_weights="last_layer",
+                 hessian_structure="kron_lcm", lcm_order=order)
+    la.fit(dl)
+    P = la.posterior_precision
+    M = P.to_matrix()
+    assert torch.allclose(M, M.T, atol=1e-12)
+    S = torch.linalg.inv(M)
+    assert torch.allclose(P.logdet(), torch.logdet(M))
+
+    Js = la.backend.last_layer_jacobians(X[:5])[0]
+    assert Js.abs().max() > 0
+    assert torch.allclose(la.functional_variance(Js),
+                          torch.einsum("ncp,pq,ndq->ncd", Js, S, Js), atol=1e-10)
+    Jf = Js.reshape(-1, Js.shape[-1])
+    assert torch.allclose(la.functional_covariance(Js), Jf @ S @ Jf.T, atol=1e-10)
+    # one structured block and one dense (bias) block, as expected for a Linear layer
+    kinds = [b["kind"] for b in P.blocks]
+    assert kinds == ["lcm", "dense"]
+
+
+def test_kron_lcm_sampling_is_perturb_and_solve():
+    """No closed-form square root exists, so samples come from perturb-and-solve; their
+    covariance must still converge to the posterior covariance."""
+    dl, model, _ = _kron_setup()
+    la = Laplace(model, "classification", subset_of_weights="last_layer",
+                 hessian_structure="kron_lcm")
+    la.fit(dl)
+    P = la.posterior_precision
+    S = torch.linalg.inv(P.to_matrix())
+    n = 200_000
+    samples = la.sample(n, generator=torch.Generator().manual_seed(0))
+    emp = torch.cov((samples - la.mean).T)
+    assert emp.shape == S.shape
+    # tolerance set by Monte-Carlo error, ~sqrt(2 p / n)
+    assert (emp - S).norm() / S.norm() < 5 * (2 * S.shape[0] / n) ** 0.5
+    with pytest.raises(NotImplementedError, match="exponent 1 and -1"):
+        P.bmm(torch.randn(2, S.shape[0], dtype=torch.float64), exponent=-0.5)
+
+
+def test_kron_lcm_rejects_damping():
+    """Factored damping approximates the prior; the reduction adds it exactly, so
+    asking for both is a contradiction and must fail loudly."""
+    dl, model, _ = _kron_setup()
+    la = Laplace(model, "classification", subset_of_weights="last_layer",
+                 hessian_structure="kron_lcm", damping=True)
+    with pytest.raises(ValueError, match="damping is not applicable"):
+        la.fit(dl)
+
+
+def test_kron_last_layer_damping_survives_init():
+    """Regression test: `KronLaplace.__init__` runs later in the MRO and used to reset
+    `damping` to its default, silently discarding `damping=True` passed to the
+    last-layer class (whose docstring documents it as supported)."""
+    _, model, _ = _kron_setup()
+    assert Laplace(model, "classification", subset_of_weights="last_layer",
+                   hessian_structure="kron", damping=True).damping is True
