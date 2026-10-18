@@ -77,6 +77,7 @@ def kalman_stats(
     w: torch.Tensor,
     d: torch.Tensor,
     y: torch.Tensor | None = None,
+    return_filter: bool = False,
 ):
     """Kalman filter for ``A = diag(d) + diag(w) K(a) diag(w)`` via two associative
     scans -- a direct port of the reference implementation.
@@ -99,15 +100,21 @@ def kalman_stats(
     and, if ``y`` is given (already mean-subtracted, shape ``(..., dim)``), the
     innovations ``v`` with ``v_k ~ N(0, S_k)`` independent. Then
     ``log det A = sum_k log S_k`` and ``y^T A^{-1} y = sum_k v_k^2 / S_k``.
+
+    With ``return_filter=True`` the filter internals needed to apply ``L^T`` are also
+    returned -- ``(S, v, idx, K_gain, alpha, c)`` -- which is what :func:`kalman_solve`
+    uses to turn the quadratic form into an actual solve.
     """
     dim = a.shape[-1]
     a_s, idx = torch.sort(a)
     w_s, d_s = w[idx], d[idx]
     if dim == 1:  # degenerate chain: no transitions
         S = (w_s**2 + d_s).clamp(min=1e-12)
-        if y is None:
-            return S, None
-        return S, y.index_select(-1, idx)
+        v = None if y is None else y.index_select(-1, idx)
+        if return_filter:
+            z = torch.zeros(1, dtype=w_s.dtype, device=w_s.device)
+            return S, v, idx, z, z + 1.0, z
+        return S, v
 
     dt = (a_s[1:] - a_s[:-1]).clamp(min=1e-12)
     phi = torch.exp(-dt)
@@ -134,7 +141,7 @@ def kalman_stats(
     qv = torch.cat([torch.zeros(1, dtype=w_s.dtype, device=w_s.device), q])
     P_pred = (phi2v * P_prev + qv).clamp(min=1e-12)
     S = (w_s**2 * P_pred + d_s).clamp(min=1e-12)
-    if y is None:
+    if y is None and not return_filter:
         return S, None
 
     # --- scan 2: mean recursion (reference lines 84-107) ----------------------
@@ -142,11 +149,14 @@ def kalman_stats(
     # [[alpha, beta], [0, 1]]; the prefix product is normalised inside the scan, so
     # the affine part is recovered as entry (0,1) divided by entry (1,1).
     K_gain = (P_pred * w_s) / S
-    y_s = y.index_select(-1, idx)
-
     alpha = torch.cat(
         [torch.ones(1, dtype=w_s.dtype, device=w_s.device), phi * (1.0 - K_gain[1:] * w_s[1:])]
     )
+    phiv = torch.cat([torch.ones(1, dtype=w_s.dtype, device=w_s.device), phi])
+    if y is None:  # return_filter only: no mean recursion to run
+        return S, None, idx, K_gain, alpha, w_s * phiv
+
+    y_s = y.index_select(-1, idx)
     beta = K_gain * y_s  # (..., dim)
 
     Mm = torch.zeros(*beta.shape, 2, 2, dtype=w_s.dtype, device=w_s.device)
@@ -158,8 +168,10 @@ def kalman_stats(
     m = Mmc[..., 0, 1] / Mmc[..., 1, 1].clamp(min=1e-30)
 
     m_prev = torch.cat([torch.zeros_like(m[..., :1]), m[..., :-1]], dim=-1)
-    phiv = torch.cat([torch.ones(1, dtype=w_s.dtype, device=w_s.device), phi])
-    v = y_s - w_s * phiv * m_prev
+    c = w_s * phiv
+    v = y_s - c * m_prev
+    if return_filter:
+        return S, v, idx, K_gain, alpha, c
     return S, v
 
 
@@ -210,6 +222,65 @@ def kalman_stats_sequential(
     if want_v:
         return S, torch.stack(v_list, dim=-1)
     return S, None
+
+
+def kalman_solve(
+    a: torch.Tensor, w: torch.Tensor, d: torch.Tensor, y: torch.Tensor
+) -> torch.Tensor:
+    """``A^{-1} y`` in ``O(dim)`` for ``A = diag(d) + diag(w) K(a) diag(w)``.
+
+    The innovations form of the filter in :func:`kalman_stats` is ``v = L y`` with
+    ``L`` unit lower-triangular and ``Cov(v) = diag(S)``, hence ``L A L^T = diag(S)``
+    and
+
+        ``A^{-1} = L^T diag(S)^{-1} L``   so   ``A^{-1} y = L^T (v / S)``.
+
+    Applying ``L^T`` is one *backward* first-order linear recursion, run with the same
+    associative scan the forward filter uses, so this costs the same ``O(dim)`` work and
+    ``O(log dim)`` depth as the log-determinant -- no sequential sweep. Supports
+    arbitrary batch dimensions on ``y`` (shape ``(..., dim)``).
+    """
+    S, v, idx, K_gain, alpha, c = kalman_stats(a, w, d, y, return_filter=True)
+    u = v / S
+    dim = a.shape[-1]
+    if dim == 1:
+        out = torch.empty_like(u)
+        return out.index_copy_(-1, idx, u)
+
+    # r_j = sum_{k>j} u_k c_k prod_{l=j+1}^{k-1} alpha_l, i.e. the backward recursion
+    #   r_j = alpha_{j+1} r_{j+1} + (u c)_{j+1},  r_{dim-1} = 0,
+    # which in reversed index m = dim-1-j is the same affine scan as the mean recursion.
+    uc = u * c
+    one = torch.ones(1, dtype=u.dtype, device=u.device)
+    ap = torch.cat([one, alpha[1:].flip(-1)])
+    bp = torch.cat([torch.zeros_like(uc[..., :1]), uc[..., 1:].flip(-1)], dim=-1)
+
+    Mm = torch.zeros(*bp.shape, 2, 2, dtype=u.dtype, device=u.device)
+    Mm[..., 0, 0] = ap.expand_as(bp)
+    Mm[..., 0, 1] = bp
+    Mm[..., 1, 1] = 1.0
+    Mmc = _parallel_prefix_2x2(Mm)
+    r = (Mmc[..., 0, 1] / Mmc[..., 1, 1].clamp(min=1e-30)).flip(-1)
+
+    x_s = u - K_gain * r
+    out = torch.empty_like(x_s)
+    return out.index_copy_(-1, idx, x_s)
+
+
+def seriation_order(A: torch.Tensor) -> torch.Tensor:
+    """Recover a 1-D ordering of the coordinates of ``A`` by spectral seriation.
+
+    Builds the absolute-correlation graph of ``A`` and sorts the coordinates by the
+    Fiedler vector (the second-smallest eigenvector of its graph Laplacian). Uses no
+    side information about the true order, so it is the honest choice whenever the
+    coordinates are not already physically ordered; costs one ``dim x dim``
+    eigendecomposition.
+    """
+    g = torch.diagonal(A).clamp(min=1e-30).sqrt()
+    R = (A / g[:, None] / g[None, :]).abs()
+    L = torch.diag(R.sum(1)) - R
+    fiedler = torch.linalg.eigh(L)[1][:, 1]
+    return torch.argsort(fiedler)
 
 
 def logdet_from_params(a: torch.Tensor, w: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
@@ -421,6 +492,84 @@ class LCMCovariance(nn.Module):
         """``y^T A^{-1} y`` in ``O(dim)`` (``y`` already mean-subtracted)."""
         S, v = self._kalman(y)
         return (v**2 / S).sum(dim=-1)
+
+    def solve(self, y: torch.Tensor) -> torch.Tensor:
+        """``A^{-1} y`` in ``O(dim)`` per right-hand side (see :func:`kalman_solve`)."""
+        return kalman_solve(self.a, self.w, self.d, y)
+
+    @torch.no_grad()
+    def fit_moments(
+        self,
+        X: torch.Tensor | None = None,
+        *,
+        moments: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None,
+        order: torch.Tensor | None = None,
+        clip: float = 0.999,
+    ) -> LCMCovariance:
+        """Closed-form fit from the first three bands of the target second moment.
+
+        The LCM is a stationary-latent AR(1) plus independent noise, so for consecutive
+        coordinates ``p, p+1, p+2`` along the chain the target entries satisfy
+
+            ``A[p,p+1]   = w_p w_{p+1} phi_{p+1}``
+            ``A[p+1,p+2] = w_{p+1} w_{p+2} phi_{p+2}``
+            ``A[p,p+2]   = w_p w_{p+2} phi_{p+1} phi_{p+2}``
+
+        whose ratio identifies the amplitudes without any optimisation:
+
+            ``w_{p+1}^2 = A[p,p+1] A[p+1,p+2] / A[p,p+2]`` ,
+
+        then ``phi`` from the first band and ``d = diag(A) - w^2``. One pass over the
+        data, ``O(N dim)`` time and ``O(dim)`` memory -- the ``dim x dim`` matrix is
+        never formed, and there is no optimiser to tune or diverge. Exact (to floating
+        point) when the target is itself an LCM, except at the two endpoint amplitudes,
+        which these three bands do not identify; they are copied inward.
+
+        Pass either the activations ``X`` of shape ``(N, dim)``, or precomputed
+        ``moments = (s0, s1, s2)`` -- the diagonal and the first two off-diagonal bands,
+        already in chain order. ``order`` gives the 1-D ordering of the coordinates when
+        it is not the natural one (e.g. from seriation); parameters are stored in the
+        original indexing either way.
+        """
+        dev, dt = self.w.device, self.w.dtype
+        if (X is None) == (moments is None):
+            raise ValueError("fit_moments needs exactly one of `X` or `moments`.")
+        perm = (
+            torch.arange(self.dim, device=dev)
+            if order is None
+            else torch.as_tensor(order, device=dev, dtype=torch.long)
+        )
+        if X is not None:
+            P = torch.as_tensor(X, device=dev, dtype=dt)[:, perm]
+            s0 = (P * P).mean(0)
+            s1 = (P[:, :-1] * P[:, 1:]).mean(0)
+            s2 = (P[:, :-2] * P[:, 2:]).mean(0)
+        else:
+            s0, s1, s2 = (torch.as_tensor(m, device=dev, dtype=dt) for m in moments)
+
+        tol = self.eps * s0.mean().clamp(min=self.eps)
+        w2 = torch.zeros(self.dim, device=dev, dtype=dt)
+        if self.dim > 2:
+            w2[1:-1] = torch.where(s2.abs() > tol, s1[:-1] * s1[1:] / s2, torch.zeros_like(s2))
+            w2[0], w2[-1] = w2[1], w2[-2]  # endpoints are not identified by 3 bands
+        elif self.dim == 2:
+            w2[:] = s1.abs()
+        w2 = w2.clamp(min=0.0).minimum(clip * s0)
+        w = w2.sqrt()
+
+        if self.dim > 1:
+            denom = (w[:-1] * w[1:]).clamp(min=tol)
+            phi = torch.where(denom > tol, s1 / denom, torch.full_like(denom, tol))
+            phi = phi.clamp(min=tol, max=1.0 - 1e-12)
+            a_chain = torch.cat([torch.zeros(1, device=dev, dtype=dt), (-phi.log()).cumsum(0)])
+        else:
+            a_chain = torch.zeros(1, device=dev, dtype=dt)
+
+        d = (s0 - w2).clamp(min=tol) - self.eps
+        self.a.index_copy_(0, perm, a_chain)
+        self.w.index_copy_(0, perm, w)
+        self.u_raw.index_copy_(0, perm, _inverse_softplus(d.clamp(min=1e-12)))
+        return self
 
     def nll(self, x: torch.Tensor, mu: torch.Tensor | None = None) -> torch.Tensor:
         """Mean exact Gaussian negative log-likelihood of rows of ``x``."""
