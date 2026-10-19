@@ -318,19 +318,22 @@ def main():
           f"stride-1 widths {args.channels} -> D = {[c * 1024 for c in args.channels]}")
     print("  held-out Gaussian NLL of the centred features (lower is better), mean over seeds\n")
     chains = ["lcm_moments", "lcm_frob", "lcm_ml", "lcm_frob_fixed_a"]
-    piv = df.pivot_table(index=["layer", "D"], columns="family", values="nll", aggfunc="mean")
-    sem = df.pivot_table(index=["layer", "D"], columns="family", values="nll", aggfunc="sem")
+    # Group by layer alone: D varies by a few dimensions between seeds, because the number
+    # of degenerate ReLU units dropped is seed-dependent, so (layer, D) would split seeds.
+    piv = df.pivot_table(index="layer", columns="family", values="nll", aggfunc="mean")
+    sem = df.pivot_table(index="layer", columns="family", values="nll", aggfunc="sem")
+    dims = df.groupby("layer").D.mean()
     fam = [f for f in ["diag", *chains, *(f"fa_r{r}" for r in args.ranks)] if f in piv.columns]
     print(f"  {'layer':8}{'D':>8}" + "".join(f"{f:>19}" for f in fam))
     for key in piv.index:
         row = piv.loc[key]
         best = row[fam].min()
-        print(f"  {key[0]:8}{int(key[1]):8d}" + "".join(
+        print(f"  {key:8}{int(dims[key]):8d}" + "".join(
             f"{row[f]:>17.1f}{'*' if row[f] == best else ' '} " for f in fam))
     if len(df.seed.unique()) > 1:
         print("\n  standard error over seeds (same layout):")
         for key in sem.index:
-            print(f"  {key[0]:8}{int(key[1]):8d}" + "".join(
+            print(f"  {key:8}{int(dims[key]):8d}" + "".join(
                 f"{sem.loc[key, f]:>18.2f} " for f in fam))
 
     print("\n  VERDICT per layer (does a chain beat a matched-budget factor analyser?)")
@@ -339,14 +342,14 @@ def main():
         present = [f for f in chains if f in piv.columns]
         who = min(present, key=lambda f: row[f])
         fa2 = row["fa_r2"] if "fa_r2" in piv.columns else float("nan")
-        s = sem.loc[key, "fa_r2"] if "fa_r2" in sem.columns else float("nan")
-        margin = f" ({abs(row[who] - fa2) / s:.1f} sem)" if s == s and s > 0 else ""
+        s2 = sem.loc[key, "fa_r2"] if "fa_r2" in sem.columns else float("nan")
+        margin = f" ({abs(row[who] - fa2) / s2:.1f} sem)" if s2 == s2 and s2 > 0 else ""
         verdict = "CHAIN WINS" if row[who] < fa2 else "FACTOR ANALYSIS WINS at equal budget"
-        print(f"    {key[0]:8} D={int(key[1]):7d}  best chain {row[who]:12.1f} ({who})   "
+        print(f"    {key:8} D={int(dims[key]):7d}  best chain {row[who]:12.1f} ({who})   "
               f"fa_r2 (3D, matched) {fa2:12.1f}   -> {verdict}{margin}")
     print(f"\n  chain-likeness of the flattened maps (neighbour |corr| vs random-pair |corr|):")
-    for key, grp in df.groupby(["layer", "D"]):
-        print(f"    {key[0]:8} D={int(key[1]):7d}  neighbour {grp.nb_corr.mean():.4f}  "
+    for key, grp in df.groupby("layer"):
+        print(f"    {key:8} D={int(dims[key]):7d}  neighbour {grp.nb_corr.mean():.4f}  "
               f"random pair {grp.rand_corr.mean():.4f}  "
               f"ratio {grp.nb_corr.mean()/max(grp.rand_corr.mean(), 1e-12):6.2f}x")
     print(f"\n  total {time.perf_counter() - t0:.1f}s")
