@@ -2025,6 +2025,29 @@ Mean correlation of 512 samples at each lag, against held-out features (3 seeds)
 
 (D = 16 382; layer 1 at D = 4096 is the same ordering, `lcm_moments` 0.1988 ± 0.019 best.)
 
+### Confirmed on the cluster: CIFAR-100, 5 seeds, D up to 65 536
+
+`results/exp27_cifar100.csv` (job 540753, trzmiel, 1 h 29 m). Profile error, lower is better:
+
+| family | D = 16 384 | D = 65 536 |
+|---|---|---|
+| **lcm_moments (3D)** | **0.1773 ± 0.0034** | **0.1658 ± 0.0045** |
+| lcm_moments, Hilbert order (3D) | 0.2475 ± 0.0022 | 0.2116 ± 0.0043 |
+| lcm_frob (3D, paper's objective) | 0.3696 ± 0.0134 | 0.4613 ± 0.0150 |
+| fa_r3 (4D) | 0.3772 ± 0.0066 | 0.4260 ± 0.0046 |
+| fa_r2 (3D, matched) | 0.4203 ± 0.0086 | 0.4983 ± 0.0027 |
+| lcm_frob_fixed_a (2D) | 0.4280 ± 0.0101 | 0.5288 ± 0.0079 |
+| diag (1D) | 0.6244 ± 0.0100 | 0.7049 ± 0.0038 |
+
+With five seeds the margins are no longer arguable: at D = 65 536 the moment-fitted chain
+is **~8σ** ahead of the next-best arm (its own Hilbert variant) and **~50σ** ahead of
+rank-3 factor analysis. It tracks the true decay 0.939 / 0.866 / 0.745 with
+0.936 / 0.889 / 0.804, and the gap to every flat-profile family *widens* with D — the
+Frobenius fit degrades from 0.3696 to 0.4613 as dimension grows, while the moment fit
+improves. Cross-channel correlation is near zero in these features (truth 0.026 / 0.053,
+against 0.199 on CIFAR-10), so here the chain's only real miss is still the vertical
+neighbour: lag 32 is 0.230 against a true 0.922, which the Hilbert ordering lifts to 0.776.
+
 **The chain is the only cheap family that reproduces *local* structure.** It tracks the
 true decay 0.854 → 0.753 → 0.655 almost exactly. Low-rank cannot: factor analysis produces
 a **flat** profile (0.347 at every lag), i.e. one global correlation, and the diagonal
@@ -2067,8 +2090,9 @@ Kept here so that "not done" is never mistaken for "does not work".
 
 | Gap | State |
 |---|---|
-| Exp 25 at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | `cluster/exp25.sbatch` written, code rsynced to the cluster, environment built inside `pytorch_24.12-py3.sif` except a `curvlinops` pin (3.x moved `curvlinops._base`, which the fork imports — now pinned to the laptop's 2.0.1). **Blocked: the gateway began refusing the SSH key mid-session**, after the setup job had already run |
-| Exp 25 locally at `D` up to 65536, 3 seeds | running on this laptop (CPU, float64), the local complement of the cluster run |
+| Exp 25 at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | **Running** on trzmiel (job 541456, 10 CPUs, 32G, ~3.5 h expected). Three submission faults were fixed to get there: a 16-CPU request against the `quick` QoS 10-CPU cap, `quota` missing on the compute node failing the setup job under `set -e` (which cancelled the `afterok` dependants), and a 64G memory request that pended on Resources while 52 CPUs sat idle |
+| Exp 25 locally at `D` up to 65536, 3 seeds | **Done**, 3 seeds — table above; verified against dense Cholesky |
+| Exp 27 on the cluster: CIFAR-100, 5 seeds, `D` to 65536 | **Done** (job 540753, 1 h 29 m) — table above; the moment fit leads by ~8σ |
 | ~~Library `lowrank` baseline~~ | **Closed, negatively** — see the table above. Not an install problem: upstream pins `asdfghjkl==0.1a4`, which renamed its module to `asdl` and dropped the four functions `AsdfghjklHessian` imports. Unblocking it means writing `eig_lowrank` ourselves |
 
 ### Promising, identified, not run

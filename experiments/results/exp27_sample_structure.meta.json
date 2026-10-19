@@ -1,0 +1,65 @@
+{
+  "timestamp": "2026-10-18T23:08:20",
+  "experiments_git": {
+    "commit": "11a093a",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "dcaffef",
+    "dirty": false
+  },
+  "library_path": "/home/tom/prjs/laplace_bayes/Laplace",
+  "host": "Dell-G15-5530",
+  "slurm_job_id": null,
+  "argv": [
+    "experiments/exp27_sample_structure.py",
+    "--channels",
+    "4,16",
+    "--n",
+    "1200",
+    "--epochs",
+    "3",
+    "--seeds",
+    "3",
+    "--steps",
+    "200",
+    "--em-iters",
+    "40",
+    "--threads",
+    "3",
+    "--tag",
+    "exp27_sample_structure"
+  ],
+  "python": "3.13.5",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.2",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "threads": 3,
+  "dtype": "torch.float64",
+  "config": {
+    "dataset": "cifar10",
+    "data_root": "/home/tom/data",
+    "channels": [
+      4,
+      16
+    ],
+    "n": 1200,
+    "epochs": 3,
+    "seeds": 3,
+    "n_samples": 512,
+    "steps": 200,
+    "lr": 0.05,
+    "batch_size": 256,
+    "em_iters": 40,
+    "ranks": [
+      2,
+      3
+    ],
+    "var_floor": 0.0001,
+    "dead_rel": 1e-06,
+    "threads": 3,
+    "tag": "exp27_sample_structure",
+    "elapsed_s": 966.3818208929733
+  }
+}

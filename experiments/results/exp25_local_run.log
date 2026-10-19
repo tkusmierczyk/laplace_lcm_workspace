@@ -1,0 +1,155 @@
+  seed 0  layer1  D=4096  (4 channels x 32 x 32), n_train=960
+    (dropped 0 degenerate dims, shared variance floor 3.385e-05)
+    diag               1.0D  NLL         3653.4  ( +0.8919/dim)      0.0s
+    lcm_moments        3.0D  NLL         1232.7  ( +0.3010/dim)      0.2s
+    lcm_frob           3.0D  NLL         2494.4  ( +0.6090/dim)      9.1s
+    lcm_ml             3.0D  NLL         2496.9  ( +0.6096/dim)     68.6s
+    lcm_frob_fixed_a   2.0D  NLL         2426.5  ( +0.5924/dim)      5.8s
+    fa_r2              3.0D  NLL         2991.9  ( +0.7304/dim)      0.7s
+    fa_r3              4.0D  NLL         2810.7  ( +0.6862/dim)      0.6s
+  seed 0  layer2  D=16384  (16 channels x 32 x 32), n_train=960
+    (dropped 0 degenerate dims, shared variance floor 2.539e-05)
+    diag               1.0D  NLL        12131.3  ( +0.7404/dim)      0.1s
+    lcm_moments        3.0D  NLL          259.0  ( +0.0158/dim)      1.5s
+    lcm_frob           3.0D  NLL         9305.8  ( +0.5680/dim)     51.5s
+    lcm_ml           skipped: D > --ml-max-d (8192)
+    lcm_frob_fixed_a   2.0D  NLL         8537.6  ( +0.5211/dim)     46.5s
+    fa_r2              3.0D  NLL         9567.9  ( +0.5840/dim)      3.2s
+    fa_r3              4.0D  NLL         9120.2  ( +0.5567/dim)      3.2s
+  seed 0  layer3  D=65536  (64 channels x 32 x 32), n_train=960
+    (dropped 7 degenerate dims, shared variance floor 4.040e-05)
+    diag               1.0D  NLL        60273.3  ( +0.9198/dim)      0.3s
+    l    lcm_frob_fixed_a   2.0D  NLL        43684.2  ( +0.6666/dim)    21    lcm_frob           3.0D  NLL        44963.6  ( +0.6862/dim)    413.4s
+    lcm_ml           skipped: D > --ml-max-d (8192)
+    lcm_frob_fixed_a   2.0D  NLL        43513.0  ( +0.6640/dim)    363.7s
+    fa_r2              3.0D  NLL        48564.5  ( +0.7411/dim)     21.8s
+    fa_r3              4.0D  NLL        45609.2  ( +0.6960/dim)     23.7s
+  seed 1  layer1  D=4096  (4 channels x 32 x 32), n_train=960
+    (dropped 0 degenerate dims, shared variance floor 3.493e-05)
+    diag               1.0D  NLL         3681.4  ( +0.8988/dim)      0.0s
+    lcm_moments        3.0D  NLL          699.3  ( +0.1707/dim)      0.4s
+    lcm_frob           3.0D  NLL         2395.0  ( +0.5847/dim)      9.7s
+    lcm_ml             3.0D  NLL         2487.4  ( +0.6073/dim)     95.0s
+    lcm_frob_fixed_a   2.0D  NLL         2510.9  ( +0.6130/dim)     11.3s
+    fa_r2              3.0D  NLL         3100.3  ( +0.7569/dim)      0.8s
+    fa_r3              4.0D  NLL         2965.3  ( +0.7239/dim)      0.8s
+  seed 1  layer2  D=16384  (16 channels x 32 x 32), n_train=960
+    (dropped 1 degenerate dims, shared variance floor 2.869e-05)
+    diag               1.0D  NLL        12508.2  ( +0.7635/dim)      0.1s
+    lcm_moments        3.0D  NLL         1947.1  ( +0.1188/dim)      2.5s
+    lcm_frob           3.0D  NLL         9198.7  ( +0.5615/dim)     73.3s
+    lcm_ml           skipped: D > --ml-max-d (8192)
+    lcm_frob_fixed_a   2.0D  NLL         9137.2  ( +0.5577/dim)     50.4s
+    fa_r2              3.0D  NLL        10338.0  ( +0.6310/dim)      3.5s
+    fa_r3              4.0D  NLL         9703.3  ( +0.5923/dim)      3.5s
+  seed 1  lay    lcm_frob_fixed_a   2.0D  NLL        41220.7  ( +0.6290/dim)    338.1s
+    fa_r2              3.0D  NLL        45719.2  ( +0.6976/dim)     21.6s
+    fa_r3              4.0D  NLL        43146.9  ( +0.6584/dim)     21.9s
+  seed 2  layer1  D=4096  (4 channels x 32    lcm_frob           3.0D  NLL        42744.4  ( +0.6522/dim)    470.7s
+    lcm_ml           skipped: D > --ml-max-d (8192)
+    lcm_frob_fixed_a   2.0D  NLL        41237.7  ( +0.6293/dim)    304.6s
+    fa_r2              3.0D  NLL        45741.1  ( +0.6980/dim)     19.2s
+    fa_r3              4.0D  NLL        43168.8  ( +0.6587/dim)     21.3s
+  seed 2  layer1  D=4096  (4 channels x 32 x 32), n_train=960
+    (dropped 0 degenerate dims, shared variance floor 3.174e-05)
+    diag               1.0D  NLL         3536.6  ( +0.8634/dim)      0.0s
+    lcm_moments        3.0D  NLL          257.4  ( +0.0628/dim)      0.3s
+    lcm_frob           3.0D  NLL         2321.6  ( +0.5668/dim)     12.4s
+    lcm_ml             3.0D  NLL         2351.7  ( +0.5741/dim)     70.8s
+    lcm_frob_fixed_a   2.0D  NLL         2308.6  ( +0.5636/dim)      7.4s
+    fa_r2              3.0D  NLL         2887.0  ( +0.7048/dim)      0.6s
+    fa_r3              4.0D  NLL         2751.4  ( +0.6717/dim)      0.6s
+  seed 2  layer2  D=16384  (16 channels x 32 x 32), n_train=960
+    (dropped 31 degenerate dims, shared variance floor 2.172e-05)
+    diag               1.0D  NLL        11346.7  ( +0.6939/dim)      0.0s
+    lcm_moments        3.0D  NLL         2702.5  ( +0.1653/dim)      1.8s
+    lcm_frob           3.0D  NLL         8689.9  ( +0.5314/dim)     53.2s
+    lcm_ml           skipped: D > --ml-max-d (8192)
+    lcm_frob_fixed_a   2.0D  NLL         8199.7  ( +0.5014/dim)     34.3s
+    fa_r2              3.0D  NLL           fa_r2              3.0D  NLL       fa_r3              4.0D  NLL           fa_r3              4.0D  NLL       313761.8  ( +4.7876/dim)     18.7s
+
+  cifar10, 1200 images, 3 seeds, stride-1 widths [4, 16, 64] -> D = [4096, 16384, 65536]
+  held-out Gaussian NLL of the centred features (lower is better), mean over seeds
+
+  layer          D               diag        lcm_moments            lcm_frob           3.0D  NLL        44792.5  ( +0.6835/dim)    251.5s
+    lcm_ml           skipped: D > --ml-max-d (8192)
+    lcm_frob_fixed_a   2.0D  NLL        42253.4  ( +0.6447/dim)    225.7s
+    fa_r2              3.0D  NLL        46553.9  ( +0.7104/dim)     13.1s
+    fa_r3              4.0D  NLL        43974.0  ( +0.6710/dim)     13.3s
+
+  cifar10, 1200 images, 3 seeds, stride-1 widths [4, 16, 64] -> D = [4096, 16384, 65536]
+  held-out Gaussian NLL of the centred features (lower is better), mean over seeds
+
+  layer          D               diag        lcm_moments           lcm_frob             lcm_ml   lcm_frob_fixed_a              fa_r2              fa_r3
+  layer1      4096           3623.8              729.8*            2403.7             2445.3             2415.4             2993.1             2842.5  
+  layer2     16353          11346.7             2702.5*            8689.9                nan             8199.7             9112.8             8688.6  
+  layer2     16383          12508.2             1947.1*            9198.7                nan             9137.2            10338.0             9703.3  
+  layer2     16384          12131.3              259.0*            9305.8                nan             8537.6             9567.9             9120.2  
+  layer3     65529          60273.3            -6319.7*           44963.6                nan            43513.0            48564.5            45609.2  
+  layer3     65534          57501.4            -1811.2*           42744.4                nan            41237.7            45741.1            43168.8  
+  layer3     65535          60348.5             3132.6*           44792.5                nan            42253.4            46553.9            43974.0  
+
+  standard error over seeds (same layout):
+  layer1      4096             44.36             281.97              50.06              46.90              58.66              61.58              63.74 
+
+  VERDICT per layer (does a chain beat a matched-budget factor analyser?)
+    layer1   D=   4096  best chain        729.8 (lcm_moments)   fa_r2 (3D, matched)       2993.1   -> CHAIN WINS (36.8 sem)
+Traceback (most recent call last):
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexes/base.py", line 3805, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7081, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7089, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'layer2'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "index.pyx", line 768, in pandas._libs.index.BaseMultiIndexCodesEngine.get_loc
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexes/base.py", line 3812, in get_loc
+    raise KeyError(key) from err
+KeyError: 'layer2'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexes/multi.py", line 3220, in _get_loc_level
+    return (self._engine.get_loc(key), None)
+            ~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "index.pyx", line 771, in pandas._libs.index.BaseMultiIndexCodesEngine.get_loc
+KeyError: ('layer2', 16353)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/tom/prjs/laplace_bayes/experiments/exp25_paper_scale_baselines.py", line 357, in <module>
+    main()
+    ~~~~^^
+  File "/home/tom/prjs/laplace_bayes/experiments/exp25_paper_scale_baselines.py", line 342, in main
+    s = sem.loc[key, "fa_r2"] if "fa_r2" in sem.columns else float("nan")
+        ~~~~~~~^^^^^^^^^^^^^^
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexing.py", line 1184, in __getitem__
+    return self._getitem_tuple(key)
+           ~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexing.py", line 1368, in _getitem_tuple
+    return self._getitem_lowerdim(tup)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexing.py", line 1041, in _getitem_lowerdim
+    return self._getitem_nested_tuple(tup)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexing.py", line 1153, in _getitem_nested_tuple
+    obj = getattr(obj, self.name)._getitem_axis(key, axis=axis)
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexing.py", line 1431, in _getitem_axis
+    return self._get_label(key, axis=axis)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexing.py", line 1381, in _get_label
+    return self.obj.xs(label, axis=axis)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/generic.py", line 4293, in xs
+    loc, new_index = index._get_loc_level(key, level=0)
+                     ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/tom/anaconda3/lib/python3.13/site-packages/pandas/core/indexes/multi.py", line 3222, in _get_loc_level
+    raise KeyError(key) from err
+KeyError: ('layer2', 16353)

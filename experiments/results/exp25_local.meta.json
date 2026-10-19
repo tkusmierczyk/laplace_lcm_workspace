@@ -1,0 +1,75 @@
+{
+  "timestamp": "2026-10-18T23:27:50",
+  "experiments_git": {
+    "commit": "11a093a",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "dcaffef",
+    "dirty": false
+  },
+  "library_path": "/home/tom/prjs/laplace_bayes/Laplace",
+  "host": "Dell-G15-5530",
+  "slurm_job_id": null,
+  "argv": [
+    "experiments/exp25_paper_scale_baselines.py",
+    "--dataset",
+    "cifar10",
+    "--data-root",
+    "/home/tom/data",
+    "--channels",
+    "4,16,64",
+    "--n",
+    "1200",
+    "--epochs",
+    "3",
+    "--seeds",
+    "3",
+    "--steps",
+    "200",
+    "--ml-steps",
+    "60",
+    "--ml-max-d",
+    "8192",
+    "--em-iters",
+    "40",
+    "--threads",
+    "8",
+    "--tag",
+    "exp25_local"
+  ],
+  "python": "3.13.5",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.2",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "threads": 8,
+  "dtype": "torch.float64",
+  "config": {
+    "dataset": "cifar10",
+    "data_root": "/home/tom/data",
+    "channels": [
+      4,
+      16,
+      64
+    ],
+    "n": 1200,
+    "epochs": 3,
+    "seeds": 3,
+    "steps": 200,
+    "lr": 0.05,
+    "batch_size": 256,
+    "em_iters": 40,
+    "var_floor": 0.0001,
+    "dead_rel": 1e-06,
+    "ml_steps": 60,
+    "ml_max_d": 8192,
+    "ranks": [
+      2,
+      3
+    ],
+    "threads": 8,
+    "tag": "exp25_local",
+    "elapsed_s": 2835.8882058220333
+  }
+}

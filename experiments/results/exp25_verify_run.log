@@ -1,0 +1,10 @@
+  layer1 D=  4096  min innov var 1.848e-03  logdet     -10496.105  quad/dim 1.3266  NLL      +1232.7  solve resid 7.67e-12  | dense logdet err +3.110e-10  quad err -3.099e-07
+  layer2 D= 16384  min innov var 5.044e-04  logdet     -46828.381  quad/dim 1.0519  NLL       +259.0  solve resid 6.65e-14  | dense logdet err +1.455e-10  quad err -1.419e-10
+  layer3 D= 65529  min innov var 4.040e-05  logdet    -202146.497  quad/dim 1.0541  NLL      -6319.7  solve resid 1.25e-13  | dense skipped
+
+  All innovation variances positive (positive definite): True
+  Log-det agrees across the two O(D) implementations to: 0.00e+00
+  Largest relative solve residual: 7.67e-12
+  Against dense Cholesky where feasible: log-det to 3.11e-10, quadratic form to 3.10e-07
+
+saved /home/tom/prjs/laplace_bayes/experiments/results/exp25_verify.csv

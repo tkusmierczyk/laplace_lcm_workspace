@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-10-18T23:41:32",
+  "experiments_git": {
+    "commit": "11a093a",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "dcaffef",
+    "dirty": false
+  },
+  "library_path": "/home/tom/prjs/laplace_bayes/Laplace",
+  "host": "Dell-G15-5530",
+  "slurm_job_id": null,
+  "argv": [
+    "experiments/exp25_verify_moments.py",
+    "--channels",
+    "4,16,64",
+    "--threads",
+    "8",
+    "--tag",
+    "exp25_verify"
+  ],
+  "python": "3.13.5",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.2",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "threads": 8,
+  "dtype": "torch.float64",
+  "config": {
+    "dataset": "cifar10",
+    "data_root": "/home/tom/data",
+    "channels": [
+      4,
+      16,
+      64
+    ],
+    "n": 1200,
+    "epochs": 3,
+    "dense_max_d": 16384,
+    "threads": 8,
+    "tag": "exp25_verify"
+  }
+}

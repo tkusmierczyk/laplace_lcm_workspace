@@ -1,0 +1,69 @@
+{
+  "timestamp": "2026-10-19T01:29:35",
+  "experiments_git": {
+    "commit": "34e639b",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "dcaffef",
+    "dirty": false
+  },
+  "library_path": "/home/kusmierc/laplace_lcm/Laplace",
+  "host": "trzmiel",
+  "slurm_job_id": "540753",
+  "argv": [
+    "experiments/exp27_sample_structure.py",
+    "--dataset",
+    "cifar100",
+    "--data-root",
+    "/shared/sets/datasets",
+    "--channels",
+    "16,64",
+    "--n",
+    "3000",
+    "--epochs",
+    "4",
+    "--seeds",
+    "5",
+    "--steps",
+    "200",
+    "--n-samples",
+    "256",
+    "--threads",
+    "10",
+    "--tag",
+    "exp27_cifar100"
+  ],
+  "python": "3.12.3",
+  "torch": "2.6.0a0+df5bbc09d1.nv24.12",
+  "numpy": "1.26.4",
+  "device": "cpu",
+  "gpu": null,
+  "threads": 10,
+  "dtype": "torch.float64",
+  "config": {
+    "dataset": "cifar100",
+    "data_root": "/shared/sets/datasets",
+    "channels": [
+      16,
+      64
+    ],
+    "n": 3000,
+    "epochs": 4,
+    "seeds": 5,
+    "n_samples": 256,
+    "steps": 200,
+    "lr": 0.05,
+    "batch_size": 256,
+    "em_iters": 40,
+    "ranks": [
+      2,
+      3
+    ],
+    "var_floor": 0.0001,
+    "dead_rel": 1e-06,
+    "threads": 10,
+    "tag": "exp27_cifar100",
+    "elapsed_s": 5321.639930443838
+  }
+}

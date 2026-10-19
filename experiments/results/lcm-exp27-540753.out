@@ -1,0 +1,129 @@
+trzmiel
+10
+               total        used        free      shared  buff/cache   available
+Mem:             125           6          57           0          62         119
+34e639b
+dcaffef
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 12.6
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 
+  seed 0  layer1  D=16384
+    held-out features   -     lag1=+0.855  lag2=+0.736  lag4=+0.628  lag32=+0.863  lag1024=-0.079
+    diag                1.0D  lag1=-0.000  lag2=-0.001  lag4=+0.001  lag32=+0.001  lag1024=-0.001   prof.err 0.6319
+    lcm_moments         3.0D  lag1=+0.843  lag2=+0.750  lag4=+0.614  lag32=+0.106  lag1024=-0.002   prof.err 0.1750
+    lcm_frob            3.0D  lag1=+0.307  lag2=+0.301  lag4=+0.292  lag32=+0.304  lag1024=+0.018   prof.err 0.3951
+    lcm_frob_fixed_a    2.0D  lag1=+0.281  lag2=+0.281  lag4=+0.280  lag32=+0.276  lag1024=-0.032   prof.err 0.4020
+    lcm_moments_hilbert  3.0D  lag1=+0.644  lag2=+0.425  lag4=+0.172  lag32=+0.655  lag1024=-0.003   prof.err 0.2525
+    fa_r2               3.0D  lag1=+0.239  lag2=+0.241  lag4=+0.239  lag32=+0.238  lag1024=-0.044   prof.err 0.4320
+    fa_r3               4.0D  lag1=+0.315  lag2=+0.317  lag4=+0.315  lag32=+0.313  lag1024=-0.047   prof.err 0.3709
+  seed 0  layer2  D=65536
+    held-out features   -     lag1=+0.941  lag2=+0.872  lag4=+0.758  lag32=+0.923  lag1024=+0.006
+    diag                1.0D  lag1=+0.000  lag2=-0.000  lag4=+0.000  lag32=+0.000  lag1024=-0.000   prof.err 0.6999
+    lcm_moments         3.0D  lag1=+0.936  lag2=+0.889  lag4=+0.807  lag32=+0.241  lag1024=-0.000   prof.err 0.1521
+    lcm_frob            3.0D  lag1=+0.368  lag2=+0.362  lag4=+0.352  lag32=+0.359  lag1024=+0.010   prof.err 0.4113
+    lcm_frob_fixed_a    2.0D  lag1=+0.264  lag2=+0.264  lag4=+0.263  lag32=+0.256  lag1024=-0.063   prof.err 0.5031
+    lcm_moments_hilbert  3.0D  lag1=+0.774  lag2=+0.594  lag4=+0.330  lag32=+0.776  lag1024=-0.001   prof.err 0.2055
+    fa_r2               3.0D  lag1=+0.261  lag2=+0.260  lag4=+0.259  lag32=+0.255  lag1024=+0.003   prof.err 0.4925
+    fa_r3               4.0D  lag1=+0.363  lag2=+0.362  lag4=+0.360  lag32=+0.354  lag1024=-0.005   prof.err 0.4133
+  seed 1  layer1  D=16384
+    held-out features   -     lag1=+0.873  lag2=+0.760  lag4=+0.644  lag32=+0.859  lag1024=+0.152
+    diag                1.0D  lag1=-0.000  lag2=-0.000  lag4=-0.000  lag32=+0.000  lag1024=-0.000   prof.err 0.6577
+    lcm_moments         3.0D  lag1=+0.861  lag2=+0.790  lag4=+0.678  lag32=+0.138  lag1024=+0.000   prof.err 0.1898
+    lcm_frob            3.0D  lag1=+0.381  lag2=+0.372  lag4=+0.359  lag32=+0.377  lag1024=+0.033   prof.err 0.3533
+    lcm_frob_fixed_a    2.0D  lag1=+0.235  lag2=+0.235  lag4=+0.233  lag32=+0.233  lag1024=+0.059   prof.err 0.4587
+    lcm_moments_hilbert  3.0D  lag1=+0.674  lag2=+0.465  lag4=+0.207  lag32=+0.679  lag1024=-0.001   prof.err 0.2528
+    fa_r2               3.0D  lag1=+0.266  lag2=+0.265  lag4=+0.264  lag32=+0.263  lag1024=+0.022   prof.err 0.4417
+    fa_r3               4.0D  lag1=+0.320  lag2=+0.318  lag4=+0.316  lag32=+0.314  lag1024=+0.048   prof.err 0.3943
+  seed 1  layer2  D=65536
+    held-out features   -     lag1=+0.938  lag2=+0.860  lag4=+0.734  lag32=+0.919  lag1024=+0.045
+    diag                1.0D  lag1=+0.000  lag2=-0.000  lag4=+0.000  lag32=+0.000  lag1024=+0.000   prof.err 0.6991
+    lcm_moments         3.0D  lag1=+0.936  lag2=+0.887  lag4=+0.800  lag32=+0.227  lag1024=-0.000   prof.err 0.1665
+    lcm_frob            3.0D  lag1=+0.305  lag2=+0.299  lag4=+0.292  lag32=+0.300  lag1024=+0.047   prof.err 0.4514
+    lcm_frob_fixed_a    2.0D  lag1=+0.214  lag2=+0.213  lag4=+0.212  lag32=+0.209  lag1024=-0.014   prof.err 0.5324
+    lcm_moments_hilbert  3.0D  lag1=+0.773  lag2=+0.594  lag4=+0.330  lag32=+0.774  lag1024=-0.002   prof.err 0.2052
+    fa_r2               3.0D  lag1=+0.244  lag2=+0.243  lag4=+0.243  lag32=+0.239  lag1024=+0.029   prof.err 0.4993
+    fa_r3               4.0D  lag1=+0.332  lag2=+0.331  lag4=+0.329  lag32=+0.324  lag1024=+0.025   prof.err 0.4312
+  seed 2  layer1  D=16384
+    held-out features   -     lag1=+0.844  lag2=+0.719  lag4=+0.609  lag32=+0.855  lag1024=-0.051
+    diag                1.0D  lag1=-0.000  lag2=+0.000  lag4=-0.000  lag32=-0.000  lag1024=+0.001   prof.err 0.6158
+    lcm_moments         3.0D  lag1=+0.840  lag2=+0.747  lag4=+0.605  lag32=+0.063  lag1024=+0.001   prof.err 0.1760
+    lcm_frob            3.0D  lag1=+0.347  lag2=+0.337  lag4=+0.327  lag32=+0.351  lag1024=+0.028   prof.err 0.3489
+    lcm_frob_fixed_a    2.0D  lag1=+0.245  lag2=+0.244  lag4=+0.243  lag32=+0.243  lag1024=-0.013   prof.err 0.4178
+    lcm_moments_hilbert  3.0D  lag1=+0.638  lag2=+0.416  lag4=+0.161  lag32=+0.650  lag1024=+0.002   prof.err 0.2430
+    fa_r2               3.0D  lag1=+0.269  lag2=+0.267  lag4=+0.265  lag32=+0.267  lag1024=-0.043   prof.err 0.3934
+    fa_r3               4.0D  lag1=+0.309  lag2=+0.306  lag4=+0.303  lag32=+0.305  lag1024=-0.043   prof.err 0.3624
+  seed 2  layer2  D=65536
+    held-out features   -     lag1=+0.941  lag2=+0.871  lag4=+0.752  lag32=+0.926  lag1024=+0.047
+    diag                1.0D  lag1=-0.000  lag2=-0.000  lag4=+0.001  lag32=-0.000  lag1024=-0.000   prof.err 0.7073
+    lcm_moments         3.0D  lag1=+0.940  lag2=+0.896  lag4=+0.815  lag32=+0.241  lag1024=+0.002   prof.err 0.1639
+    lcm_frob            3.0D  lag1=+0.272  lag2=+0.266  lag4=+0.258  lag32=+0.268  lag1024=+0.044   prof.err 0.4857
+    lcm_frob_fixed_a    2.0D  lag1=+0.231  lag2=+0.230  lag4=+0.229  lag32=+0.227  lag1024=+0.020   prof.err 0.5199
+    lcm_moments_hilbert  3.0D  lag1=+0.782  lag2=+0.607  lag4=+0.344  lag32=+0.786  lag1024=-0.000   prof.err 0.2034
+    fa_r2               3.0D  lag1=+0.251  lag2=+0.251  lag4=+0.250  lag32=+0.247  lag1024=+0.050   prof.err 0.4987
+    fa_r3               4.0D  lag1=+0.354  lag2=+0.352  lag4=+0.351  lag32=+0.345  lag1024=+0.018   prof.err 0.4233
+  seed 3  layer1  D=16384
+    held-out features   -     lag1=+0.833  lag2=+0.698  lag4=+0.586  lag32=+0.832  lag1024=+0.037
+    diag                1.0D  lag1=-0.001  lag2=+0.000  lag4=-0.000  lag32=+0.001  lag1024=-0.000   prof.err 0.5975
+    lcm_moments         3.0D  lag1=+0.827  lag2=+0.722  lag4=+0.569  lag32=+0.071  lag1024=+0.000   prof.err 0.1690
+    lcm_frob            3.0D  lag1=+0.231  lag2=+0.228  lag4=+0.224  lag32=+0.229  lag1024=+0.042   prof.err 0.4084
+    lcm_frob_fixed_a    2.0D  lag1=+0.196  lag2=+0.195  lag4=+0.194  lag32=+0.193  lag1024=-0.006   prof.err 0.4430
+    lcm_moments_hilbert  3.0D  lag1=+0.615  lag2=+0.387  lag4=+0.150  lag32=+0.620  lag1024=-0.000   prof.err 0.2432
+    fa_r2               3.0D  lag1=+0.222  lag2=+0.221  lag4=+0.219  lag32=+0.220  lag1024=-0.023   prof.err 0.4256
+    fa_r3               4.0D  lag1=+0.261  lag2=+0.260  lag4=+0.258  lag32=+0.257  lag1024=-0.006   prof.err 0.3916
+  seed 3  layer2  D=65536
+    held-out features   -     lag1=+0.932  lag2=+0.856  lag4=+0.736  lag32=+0.916  lag1024=+0.055
+    diag                1.0D  lag1=-0.000  lag2=-0.000  lag4=-0.000  lag32=+0.000  lag1024=-0.000   prof.err 0.6992
+    lcm_moments         3.0D  lag1=+0.929  lag2=+0.876  lag4=+0.783  lag32=+0.210  lag1024=+0.002   prof.err 0.1663
+    lcm_frob            3.0D  lag1=+0.292  lag2=+0.287  lag4=+0.279  lag32=+0.287  lag1024=+0.046   prof.err 0.4608
+    lcm_frob_fixed_a    2.0D  lag1=+0.200  lag2=+0.200  lag4=+0.198  lag32=+0.197  lag1024=+0.001   prof.err 0.5398
+    lcm_moments_hilbert  3.0D  lag1=+0.758  lag2=+0.570  lag4=+0.304  lag32=+0.762  lag1024=-0.001   prof.err 0.2203
+    fa_r2               3.0D  lag1=+0.237  lag2=+0.237  lag4=+0.235  lag32=+0.232  lag1024=+0.017   prof.err 0.5074
+    fa_r3               4.0D  lag1=+0.345  lag2=+0.344  lag4=+0.342  lag32=+0.337  lag1024=+0.017   prof.err 0.4219
+  seed 4  layer1  D=16384
+    held-out features   -     lag1=+0.846  lag2=+0.718  lag4=+0.607  lag32=+0.858  lag1024=+0.068
+    diag                1.0D  lag1=+0.001  lag2=+0.001  lag4=-0.001  lag32=-0.000  lag1024=-0.000   prof.err 0.6192
+    lcm_moments         3.0D  lag1=+0.838  lag2=+0.742  lag4=+0.603  lag32=+0.079  lag1024=-0.003   prof.err 0.1768
+    lcm_frob            3.0D  lag1=+0.344  lag2=+0.337  lag4=+0.326  lag32=+0.344  lag1024=+0.100   prof.err 0.3421
+    lcm_frob_fixed_a    2.0D  lag1=+0.246  lag2=+0.244  lag4=+0.243  lag32=+0.243  lag1024=+0.028   prof.err 0.4186
+    lcm_moments_hilbert  3.0D  lag1=+0.639  lag2=+0.414  lag4=+0.163  lag32=+0.649  lag1024=+0.002   prof.err 0.2460
+    fa_r2               3.0D  lag1=+0.262  lag2=+0.262  lag4=+0.260  lag32=+0.261  lag1024=+0.009   prof.err 0.4086
+    fa_r3               4.0D  lag1=+0.306  lag2=+0.306  lag4=+0.303  lag32=+0.305  lag1024=+0.045   prof.err 0.3665
+  seed 4  layer2  D=65536
+    held-out features   -     lag1=+0.942  lag2=+0.869  lag4=+0.746  lag32=+0.928  lag1024=+0.111
+    diag                1.0D  lag1=+0.000  lag2=+0.000  lag4=-0.000  lag32=+0.000  lag1024=-0.000   prof.err 0.7190
+    lcm_moments         3.0D  lag1=+0.939  lag2=+0.894  lag4=+0.812  lag32=+0.231  lag1024=-0.001   prof.err 0.1804
+    lcm_frob            3.0D  lag1=+0.271  lag2=+0.265  lag4=+0.258  lag32=+0.267  lag1024=+0.047   prof.err 0.4974
+    lcm_frob_fixed_a    2.0D  lag1=+0.214  lag2=+0.213  lag4=+0.212  lag32=+0.211  lag1024=+0.003   prof.err 0.5486
+    lcm_moments_hilbert  3.0D  lag1=+0.776  lag2=+0.596  lag4=+0.328  lag32=+0.779  lag1024=-0.001   prof.err 0.2235
+    fa_r2               3.0D  lag1=+0.276  lag2=+0.276  lag4=+0.274  lag32=+0.271  lag1024=+0.031   prof.err 0.4934
+    fa_r3               4.0D  lag1=+0.341  lag2=+0.339  lag4=+0.338  lag32=+0.334  lag1024=+0.041   prof.err 0.4406
+
+  Autocorrelation of SAMPLES vs held-out features (256 samples, 5 seeds)
+  lag 1/2/4 = neighbouring pixels, lag 32 = the row above, lag 1024 = next channel
+
+  layer1  (D=16384)
+    family              params      lag1      lag2      lag4     lag32   lag1024  prof.err
+    held-out features     0.0D     0.850     0.726     0.615     0.853     0.026    0.0000
+    diag                  1.0D    -0.000     0.000    -0.000     0.000    -0.000    0.6244
+    lcm_moments           3.0D     0.842     0.750     0.614     0.091    -0.001    0.1773
+    lcm_frob              3.0D     0.322     0.315     0.305     0.321     0.044    0.3696
+    lcm_frob_fixed_a      2.0D     0.241     0.240     0.239     0.238     0.007    0.4280
+    lcm_moments_hilbert    3.0D     0.642     0.421     0.171     0.651     0.000    0.2475
+    fa_r2                 3.0D     0.252     0.251     0.250     0.250    -0.016    0.4203
+    fa_r3                 4.0D     0.302     0.301     0.299     0.299    -0.001    0.3772
+    closest to the real features: lcm_moments
+  layer2  (D=65536)
+    family              params      lag1      lag2      lag4     lag32   lag1024  prof.err
+    held-out features     0.0D     0.939     0.866     0.745     0.922     0.053    0.0000
+    diag                  1.0D     0.000    -0.000     0.000     0.000    -0.000    0.7049
+    lcm_moments           3.0D     0.936     0.889     0.804     0.230     0.001    0.1658
+    lcm_frob              3.0D     0.302     0.296     0.288     0.296     0.039    0.4613
+    lcm_frob_fixed_a      2.0D     0.225     0.224     0.223     0.220    -0.011    0.5288
+    lcm_moments_hilbert    3.0D     0.773     0.592     0.327     0.776    -0.001    0.2116
+    fa_r2                 3.0D     0.254     0.253     0.252     0.249     0.026    0.4983
+    fa_r3                 4.0D     0.347     0.346     0.344     0.339     0.019    0.4260
+    closest to the real features: lcm_moments
+
+  total 5322.0s
+saved /home/kusmierc/laplace_lcm/experiments/results/exp27_cifar100.csv
