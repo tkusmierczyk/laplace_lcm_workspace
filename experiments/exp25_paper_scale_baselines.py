@@ -106,14 +106,22 @@ class WideCNN(nn.Module):
 
     @torch.no_grad()
     def layer_features(self, x, layer, batch=250):
-        """Flattened feature map of one layer, streamed so only that layer is held."""
-        out = []
+        """Flattened feature map of one layer, written into one preallocated buffer.
+
+        A list of chunks plus `torch.cat` would briefly hold the whole matrix twice --
+        4.7 GB each at D=196608 with 3000 images, which is what OOM-killed the first
+        cluster attempt. Preallocating removes that spike.
+        """
+        out = None
         for i in range(0, len(x), batch):
             h = x[i:i + batch]
             for b in self.blocks[:layer + 1]:
                 h = b(h)
-            out.append(h.reshape(len(h), -1))
-        return torch.cat(out)
+            h = h.reshape(len(h), -1)
+            if out is None:
+                out = torch.empty(len(x), h.shape[1], dtype=h.dtype, device=h.device)
+            out[i:i + len(h)] = h
+        return out
 
 
 def train(model, X, y, epochs, lr=2e-3, batch=64, seed=0):

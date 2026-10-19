@@ -3,8 +3,9 @@
 #SBATCH --partition=cpu
 #SBATCH --qos=quick
 #SBATCH --cpus-per-task=10   # the `quick` QoS caps a job at 10 CPUs
-#SBATCH --mem=32G   # peak ~10-12 GB: the D=196608 feature matrix is 4.7 GB,
-                    # transiently doubled by the cat in layer_features
+#SBATCH --mem=48G   # the first attempt OOM-killed at 32G: with 3000 images the
+                    # D=196608 feature matrix alone is 4.7 GB, and the factor-analysis
+                    # initialisation adds a few GB of its own temporaries
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x-%j.out
 # Exp 25: the paper's Figure 4 claim at the paper's scale (D up to ~2e5), against a
@@ -20,7 +21,7 @@ cd "$PROJ"
 git -C "$PROJ" rev-parse --short HEAD
 git -C "$PROJ/Laplace" rev-parse --short HEAD
 
-singularity exec -B "$HOME:$HOME" -B "$DATA:$DATA" "$SIF" bash -lc "
+singularity exec -B "$HOME:$HOME" -B "$DATA:$DATA" "$SIF" bash -c "
   set -euo pipefail
   cd $PROJ
   source .env/bin/activate
@@ -35,6 +36,7 @@ singularity exec -B "$HOME:$HOME" -B "$DATA:$DATA" "$SIF" bash -lc "
     --seeds ${SEEDS:-3} \
     --steps ${STEPS:-300} \
     --em-iters ${EM:-40} \
+    --ml-max-d ${ML_MAX_D:-16384} \
     --threads \${SLURM_CPUS_PER_TASK:-10} \
     --tag ${TAG:-exp25_paper_scale}
 "
