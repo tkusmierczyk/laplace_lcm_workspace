@@ -2131,6 +2131,73 @@ reproduces the cross-channel correlation (truth 0.199).
 ---
 ---
 
+## Experiment 28 — does the covariance change the images the method actually produces?
+
+`exp28_model_inversion.py`, `exp28_check_chunk_exact.py` · `results/exp28_full_*.csv`
+
+**Why this is the decisive test.** Every other experiment here asked the structured
+covariance to *predict*. The method it comes from does not predict with it: it uses the
+covariance's log-likelihood as a loss term while optimising images that a frozen network
+believes in, so those images can stand in for a stored dataset. Experiment 27 (the sampling
+probe above) showed the chain is the only cheap family whose samples carry real spatial
+correlation. This asks whether that matters for the images.
+
+It is also the one place where the authors' own ablation is exactly the control this project
+spent weeks building by hand. With their covariance weight set to zero the loop **still**
+matches every layer's feature mean and variance, so their own baseline is a *diagonal*
+feature match, and the covariance term's entire contribution is the off-diagonal structure
+on top of it.
+
+Three arms share one loop, one set of weights and one schedule — the authors' own, 1000
+steps at 112 pixels, 2000 at 224, 400 polishing steps, batch 50, all four ResNet-34 layers.
+Only the covariance differs: their weight set to zero; their Frobenius fit; or the same
+family fitted by our closed-form moment estimator and copied into *their* module so the loop
+is untouched. Scored three ways, none circular: the inverted network's own confidence in the
+target class (higher is better), the gap between the generated and real correlation-vs-
+distance curves (Experiment 27's metric, lower is better), and Fréchet distance in a
+ResNet-18 that was never inverted and so cannot be gamed by the loop (lower is better).
+
+**Pre-registered falsifier.** If the three arms are indistinguishable on the held-out
+network, the covariance term does not matter for the method's own application, and
+Experiment 27's sampling result has no downstream consequence. That would be the most
+important negative this project could report.
+
+### Status: the baseline arm is in, with a noise calibration; the two covariance arms are running
+
+The baseline arm ran **3 seeds** rather than 1, because it costs two minutes and the
+approved single-seed design gave no way to separate a small difference between arms from
+ordinary run-to-run variation. The metrics turn out to be very stable, which sets a clear
+bar for the arms still running:
+
+| Score | Mean over 3 seeds | Run-to-run s.d. | Range |
+|---|---|---|---|
+| Confidence of the inverted network (higher better) | 99.93% | 0.01 p.p. | 99.92–99.94% |
+| Correlation-profile error (lower better) | 0.0250 | 0.0012 | 0.0237–0.0262 |
+| Fréchet distance, held-out network (lower better) | 310.68 | 1.44 | 309.59–312.31 |
+
+So a covariance arm needs to beat roughly 0.004 in profile error or 4.3 in Fréchet distance
+to be distinguishable at three standard deviations, even with one seed.
+
+Two findings are already firm, before the covariance arms finish.
+
+1. **The authors' zero-covariance baseline already reproduces the real correlation
+   structure almost exactly**, which leaves the covariance term very little room. Generated
+   against real correlation at each distance: 0.716 vs 0.722 at distance 1, 0.421 vs 0.455
+   at 2, 0.210 vs 0.269 at 4, 0.642 vs 0.640 at 7, 0.040 vs 0.063 at 49. This is a
+   confound the paper's own ablation does not isolate: the features are not drawn from the
+   covariance, they are produced by a convolutional network from optimised images, and
+   convolution plus the matched per-layer means and variances supply most of the spatial
+   correlation for free. Experiment 27's result was about *sampling* from the model; this
+   pathway never samples from it.
+2. **The covariance term costs about 350× the rest of the loop.** The whole 3400-step
+   schedule takes 2.0 minutes without it and 12.4 seconds *per step* with it, and peak
+   memory goes from 2.1 GB to 14.3 GB. Whatever the term buys has to be weighed against
+   that, and against the measured fact that the structure it is meant to impose is largely
+   there without it.
+
+---
+---
+
 ## Gap register
 
 What is settled, what is in flight, and what was identified and deliberately not run.
