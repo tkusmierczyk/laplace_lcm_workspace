@@ -2124,11 +2124,41 @@ Kept here so that "not done" is never mistaken for "does not work".
    keeps the authors' batch size and all four layers; shrinking the batch instead would
    weaken the feature mean/variance match that *every* arm depends on, including their own
    `W_LCM = 0` ablation, and so would change the baseline rather than just the budget.
+
+   Recomputing alone was still not enough: a *single* layer's scan graph is about 20 GB at
+   their batch of 50, and a second run died at 22.9 GB inside the recompute (job 541566).
+   The batch is therefore also split *inside* the likelihood. That is exact rather than an
+   approximation, because their likelihood averages a per-image total over the batch and
+   every other quantity in it depends only on the parameters; `exp28_check_chunk_exact.py`
+   verifies it against their unmodified module, where the value agrees to 3e-14 and the
+   gradient with respect to the images — the only thing the loop optimises — to 2e-16.
+   Peak memory measured afterwards: **14.3 GB** on a 24 GB card. Measured speed: **12.4
+   seconds per optimisation step** with all four layers, so the authors' full 3400-step
+   schedule costs about 11.7 GPU-hours for each arm that uses the covariance.
 2. **The quantitative claim of Tables 1–2** (+0.51 to +1.48 p.p. continual-learning
    accuracy on CIFAR-100 / Tiny-ImageNet, +0.12/+0.31 on ViT) has never been independently
    checked. Both datasets are already on the cluster (`cifar-100-python`,
    `tiny-imagenet-200`). Cost is above the 4-GPU-hour threshold, so it needs an explicit
    go-ahead.
+
+   **Approved as the next experiment after the image-inversion result lands**, and tracing
+   the authors' continual-learning entry point changed what it should test. That pipeline
+   does *not* apply the covariance to the flattened feature map the way every experiment
+   here has. It builds one dense covariance per `BatchNorm2d` over **channels only**
+   (`LCM(m.num_features)`, so 16–512 variables, not ~200 000), accumulates the empirical
+   **correlation** matrix channel-wise by a streaming Welford update over the training set,
+   and fits by mean-squared error between the model's `correlation()` and that matrix —
+   Adam, learning rate 0.01, 200 epochs — blending `ratio_old * R_old + ratio_new * R_curr`
+   by class counts across tasks and freezing the result. It is skipped entirely when their
+   `alpha_frob` weight is zero. See the table in `Laplace/laplace/LCM_PROVENANCE.md`.
+
+   Two things follow. The comparison is cheap, because 16–512 variables is laptop-sized and
+   the fitting-cost advantage is irrelevant there; the question is purely whether a
+   closed-form fit matches the correlation matrix better than 200 epochs of mean-squared
+   error. And the ordering problem is sharper, because channels have no spatial neighbour
+   relation, so the learned coordinate is seriating channels — the case where this project
+   already found order to be recoverable by seriation but at chance when learned by
+   gradient descent.
 3. **Conditional prediction on real data and on a network.** Exp 23 is a synthetic GLM.
    The same probe on Tecator (Exp 20's loader) and on Exp 21's CNN last layer is
    laptop-sized and is the obvious next step — it would tell us whether the `rho >= 0.9`
