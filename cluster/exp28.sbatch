@@ -54,6 +54,7 @@ singularity exec --nv -B "$HOME:$HOME" -B "$DATA:$DATA" -B "$SHARED:$SHARED" "$S
     --lcm-epochs ${LCM_EPOCHS:-50} \
     --iters-scale ${ITERS_SCALE:-1.0} \
     --nll-chunk ${NLL_CHUNK:-25} \
+    ${SCORE_LAYER:+--score-layer $SCORE_LAYER} \
     --seeds ${SEEDS:-1} \
     --tag ${TAG:-exp28_inversion}
 "

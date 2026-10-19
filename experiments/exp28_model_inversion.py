@@ -392,6 +392,9 @@ def main():
     p.add_argument("--n-real", type=int, default=256, help="real images used to fit and to score")
     p.add_argument("--lcm-epochs", type=int, default=50, help="theirs: 50")
     p.add_argument("--iters-scale", type=float, default=1.0, help="<1 shortens every stage")
+    p.add_argument("--score-layer", default=None,
+                   help="layer whose correlation profile is scored; default is the deepest "
+                        "one given in --layers")
     p.add_argument("--nll-chunk", type=int, default=25,
                    help="images per chunk inside the covariance term; 0 uses the whole batch. "
                         "Exact either way -- see layer_nll")
@@ -414,7 +417,14 @@ def main():
     STAT_MU = {l: stats[l]["mu"].float() for l in layers}
     STAT_VAR = {l: stats[l]["s0"].float() for l in layers}
     real_heldout = heldout_features(X, device)
-    score_layer = layers[-1]
+    # Default: the deepest layer, which is what the first runs used. That map is only 7x7
+    # though, so its "spatial" distances 1/2/4 all sit inside a single row and distance 49
+    # is already the next channel -- the least demanding place to compare structure. Pass
+    # --score-layer to score on a wide early layer instead, where distance 56 is the row
+    # below and the spatial profile has room to be wrong.
+    score_layer = ARGS.score_layer or layers[-1]
+    if score_layer not in layers:
+        raise SystemExit(f"--score-layer {score_layer} is not among --layers {layers}")
     lags = [k for k in (1, 2, 4, shapes[score_layer][2], shapes[score_layer][1] *
                         shapes[score_layer][2]) if k < dims[score_layer]]
     with torch.no_grad():
