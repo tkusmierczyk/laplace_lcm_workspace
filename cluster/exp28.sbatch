@@ -28,7 +28,7 @@ echo "library commit:     $(git -C "$PROJ/Laplace" rev-parse --short HEAD)"
 # Pretrained weights are ~130 MB and must not land in the 60 GiB home quota.
 mkdir -p "$SHARED/laplace_lcm/torch"
 
-singularity exec --nv -B "$HOME:$HOME" -B "$DATA:$DATA" -B "$SHARED:$SHARED" "$SIF" bash -lc "
+singularity exec --nv -B "$HOME:$HOME" -B "$DATA:$DATA" -B "$SHARED:$SHARED" "$SIF" bash -c "
   set -euo pipefail
   cd $PROJ
   source .env/bin/activate
