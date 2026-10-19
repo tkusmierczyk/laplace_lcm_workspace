@@ -1,0 +1,73 @@
+{
+  "timestamp": "2026-10-19T15:46:41",
+  "experiments_git": {
+    "commit": "d3918ee",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "d2143d2",
+    "dirty": false
+  },
+  "library_path": "/home/kusmierc/laplace_lcm/Laplace",
+  "host": "trzmiel",
+  "slurm_job_id": "541479",
+  "argv": [
+    "experiments/exp25_paper_scale_baselines.py",
+    "--dataset",
+    "cifar100",
+    "--data-root",
+    "/shared/sets/datasets",
+    "--channels",
+    "16,64,192",
+    "--n",
+    "3000",
+    "--epochs",
+    "4",
+    "--seeds",
+    "3",
+    "--steps",
+    "300",
+    "--em-iters",
+    "40",
+    "--ml-max-d",
+    "16384",
+    "--threads",
+    "10",
+    "--tag",
+    "exp25_paper_scale"
+  ],
+  "python": "3.12.3",
+  "torch": "2.6.0a0+df5bbc09d1.nv24.12",
+  "numpy": "1.26.4",
+  "device": "cpu",
+  "gpu": null,
+  "threads": 10,
+  "dtype": "torch.float64",
+  "config": {
+    "dataset": "cifar100",
+    "data_root": "/shared/sets/datasets",
+    "channels": [
+      16,
+      64,
+      192
+    ],
+    "n": 3000,
+    "epochs": 4,
+    "seeds": 3,
+    "steps": 300,
+    "lr": 0.05,
+    "batch_size": 256,
+    "em_iters": 40,
+    "var_floor": 0.0001,
+    "dead_rel": 1e-06,
+    "ml_steps": 100,
+    "ml_max_d": 16384,
+    "ranks": [
+      2,
+      3
+    ],
+    "threads": 10,
+    "tag": "exp25_paper_scale",
+    "elapsed_s": 18151.982213610783
+  }
+}

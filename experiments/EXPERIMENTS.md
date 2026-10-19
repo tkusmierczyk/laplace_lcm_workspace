@@ -2005,6 +2005,59 @@ floor and a ReLU map has near-dead units (7 of 65 536 below 1e-6 × median varia
 exactly zero). Degenerate dimensions are now dropped and every family gets one shared,
 reported floor. Before the fix, factor analysis appeared to win.
 
+### At the paper's own scale, on the cluster — confirmed, and the advantage grows
+
+The laptop table above runs to 65 536 dimensions on CIFAR-10. This repeats it on CIFAR-100
+with 3000 images (2400 for fitting, 600 held out) at widths that reach **196 608
+dimensions**, which is the order the paper works at. Three seeds, 5 h 2 m on one CPU node
+(`results/exp25_paper_scale.csv`).
+
+Held-out Gaussian cost of the centred features, in **nats per dimension, lower is better**,
+mean ± standard error over 3 seeds. "Parameters per dimension" is the budget each family
+spends, so families on the same number are directly comparable:
+
+| How the covariance was fitted | par/dim | 16 384 dims | 65 536 dims | 196 608 dims |
+|---|---|---|---|---|
+| Diagonal only, the paper's own baseline | 1 | 0.8372 ± 0.0099 | 0.7566 ± 0.0074 | 1.0030 ± 0.0093 |
+| Factor analysis, 2 factors (matched budget) | 3 | 0.6965 ± 0.0102 | 0.6568 ± 0.0125 | 0.8866 ± 0.0135 |
+| Factor analysis, 3 factors (larger budget) | 4 | 0.6669 ± 0.0107 | 0.6155 ± 0.0163 | 0.8425 ± 0.0148 |
+| Chain, fitted by exact maximum likelihood | 3 | 0.6811 ± 0.0085 | — | — |
+| Chain, the authors' Frobenius rule | 3 | 0.6000 ± 0.0104 | 0.6165 ± 0.0247 | 0.8472 ± 0.0156 |
+| Chain, Frobenius with the order frozen | 2 | 0.6349 ± 0.0043 | 0.5969 ± 0.0195 | 0.8396 ± 0.0191 |
+| **Chain, our closed-form moment fit** | 3 | **0.1325 ± 0.0611** | **−0.0537 ± 0.0233** | **−0.2873 ± 0.0261** |
+
+The exact-likelihood row stops after the first width because that fit is `O(D)` per step but
+needs ~1150 s even at 16 384 dimensions, so the run skips it above a cutoff.
+
+Four readings.
+
+1. **The closed-form fit beats the authors' fitting rule by a margin that widens with
+   dimension**, comparing the same seeds pairwise: **+0.4674 ± 0.0508** nats per dimension
+   at 16 384 (9 standard errors), **+0.6702 ± 0.0095** at 65 536 (71), **+1.1345 ± 0.0229**
+   at 196 608 (50). It is also **18–20× faster to fit** (98 s against 1723 s at the largest
+   width). The laptop run found the same thing at smaller sizes, so this is now confirmed
+   at the scale the method is sold on.
+2. **Their fitted chain does not beat a plain factor analyser at scale.** At 65 536 and
+   196 608 dimensions, their Frobenius-fitted chain (0.6165, 0.8472) is level with factor
+   analysis using 3 factors (0.6155, 0.8425), which is given a *larger* budget. So the
+   chain's advantage over low-rank alternatives is not a property of the family alone — it
+   only appears once the family is fitted well. The structural claim survives; the way the
+   paper obtains it does not carry it.
+3. **Learning the coordinate ordering by gradient descent buys nothing, again.** Freezing
+   the order at equal spacing uses one fewer parameter per dimension and is *better* at both
+   large widths (0.5969 against 0.6165; 0.8396 against 0.8472). This is the fifth
+   independent place in this project where the learned coordinate fails to earn its keep.
+4. **The weak point is gradient fitting, not the choice of loss.** Exact maximum likelihood
+   on the same family lands at 0.6811, close to the Frobenius rule's 0.6000 and nowhere near
+   the closed form's 0.1325, despite optimising precisely the quantity being scored and
+   costing 180× more time. Both gradient routes stall in the same region; the closed form
+   starts in a much better one. That is a statement about the parameterisation's
+   optimisation landscape, and it is the most likely mechanism behind readings 1–3.
+
+The flattened feature maps are strongly chain-like at every width, which is the precondition
+for any of this: neighbouring coordinates correlate 0.80 / 0.85 / 0.94 in absolute value
+against 0.13 / 0.12 / 0.14 for random pairs, a ratio of 5.9× / 7.0× / 6.9×.
+
 ---
 ---
 
@@ -2088,8 +2141,9 @@ Kept here so that "not done" is never mistaken for "does not work".
 | Gap | How | Outcome |
 |---|---|---|
 | **No probe separated off-diagonal structure from a correctly scaled diagonal** — the project's central open problem after Exps 17–21 | Exps 23 and 24 | **Closed.** Conditional prediction is exactly scale-invariant in the limit, and batch acquisition is a decision a temperature cannot redirect. Both separate LCM from a tempered diagonal at `rho >= 0.9` (6.0σ and 5.4σ), and both negative controls pass at `rho = 0` |
-| The Fig-4 reproduction (Exp 22) inherited the paper's **only baseline, a diagonal** | Exp 25 adds factor analysis at matched 3D budget, an equal-spacing 2D chain, and the same chain fitted by exact likelihood | In progress; see below |
-| Does our closed-form `fit_moments` beat the paper's Frobenius objective on the paper's own metric? | Exp 25's `lcm_moments` arm | Preliminary and striking: 1065.9 vs 3272.1 held-out NLL at `D=4096`, **verified against dense Cholesky** (log-det agreed to 2.9e-10, quadratic form to 1.5e-7, all eigenvalues positive, condition 7.3e4). Awaiting seeds |
+| The Fig-4 reproduction (Exp 22) inherited the paper's **only baseline, a diagonal** | Exp 25 (the fitting-rule comparison) adds factor analysis at matched 3-parameter budget, an equal-spacing chain, and the same chain fitted by exact likelihood | **Closed.** At the paper's own scale the chain beats factor analysis only once it is fitted well; their Frobenius-fitted chain is level with a *larger*-budget factor analyser at 65 536 and 196 608 dimensions |
+| Does our closed-form moment fit beat the paper's Frobenius objective on the paper's own metric? | Exp 25's closed-form arm | **Closed, confirmed at the paper's scale, 3 seeds.** Paired advantage +0.4674 ± 0.0508 / +0.6702 ± 0.0095 / +1.1345 ± 0.0229 nats per dimension at 16 384 / 65 536 / 196 608 dimensions (9 / 71 / 50 standard errors), while fitting 18–20× faster. Verified against dense Cholesky: log-det agreed to 3.1e-10, quadratic form to 3.1e-7, all eigenvalues positive |
+| Is the Frobenius objective the problem, or is it gradient fitting of this parameterisation? | Exp 25's exact-maximum-likelihood arm, which optimises the scored quantity directly | **Gradient fitting is the problem.** Exact likelihood reaches 0.6811 nats per dimension against the Frobenius rule's 0.6000 and the closed form's 0.1325, at 180× the fitting time. Both gradient routes stall in the same region |
 | Is `fit_moments` inside `kernel_matvec`'s safe numerical domain? It produces coordinate spans of ~3630, and a span over ~709 broke that routine earlier in the campaign | direct check against a dense kernel at spans 2 / 20 / 200 / 3630 | **No issue**: max error 8.9e-16 at span 3630, nothing non-finite. The blocked-rescaling fix holds |
 | Was the feature-NLL comparison fair across families? | found while reading Exp 25's first large-`D` output | **It was not, and is now.** A ReLU map has near-dead units (7 of 65536 below 1e-6 x median variance, one exactly zero), and each family clamped its diagonal at a different floor (LCM `eps` 1e-6 vs 1e-10 elsewhere), which handed the diagonal +35.8 nats/dim at `D=65536`. Degenerate dimensions are now dropped and every family gets one shared, reported floor |
 
@@ -2097,7 +2151,8 @@ Kept here so that "not done" is never mistaken for "does not work".
 
 | Gap | State |
 |---|---|
-| Exp 25 at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | **Running** on trzmiel (job 541479, 10 CPUs, 48G, ~5 h expected; seed 0 complete at all three sizes). Four submission faults were fixed to get there: a 16-CPU request against the `quick` QoS 10-CPU cap; `quota` missing on the compute node, which failed the setup job under `set -e` and so cancelled the `afterok` dependants; a 64G memory request that pended on Resources while 52 CPUs sat idle; and then 32G, which was enough for the laptop's 1200 images but not for the 3000 submitted, so job 541456 was OOM-killed partway through `D = 65536`. Now 48G, with the feature matrix preallocated instead of grown by `torch.cat` |
+| Exp 25 (the fitting-rule comparison) at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | **Done** — job 541479 on trzmiel, 5 h 2 m, 10 CPUs, 48G; table and four readings above. Four submission faults were fixed to get there: a 16-CPU request against the `quick` QoS 10-CPU cap; `quota` missing on the compute node, which failed the setup job under `set -e` and so cancelled the `afterok` dependants; a 64G memory request that pended on Resources while 52 CPUs sat idle; and then 32G, which was enough for the laptop's 1200 images but not for the 3000 submitted, so job 541456 was OOM-killed partway through `D = 65536`. Now 48G, with the feature matrix preallocated instead of grown by `torch.cat` |
+| Exp 28 (the image-inversion comparison) at the authors' full schedule | **Running**, approved after the budget was measured: jobs 541778 (our closed-form fit), 541779 (their Frobenius fit) and 541780 (their no-covariance ablation), one arm each so every job fits the one-day queue limit, 3400 steps, all four layers, their batch of 50, ~24 GPU-hours in total for one seed |
 | Exp 25 locally at `D` up to 65536, 3 seeds | **Done**, 3 seeds — table above; verified against dense Cholesky |
 | Exp 27 on the cluster: CIFAR-100, 5 seeds, `D` to 65536 | **Done** (job 540753, 1 h 29 m) — table above; the moment fit leads by ~8σ |
 | ~~Library `lowrank` baseline~~ | **Closed, negatively** — see the table above. Not an install problem: upstream pins `asdfghjkl==0.1a4`, which renamed its module to `asdl` and dropped the four functions `AsdfghjklHessian` imports. Unblocking it means writing `eig_lowrank` ourselves |
