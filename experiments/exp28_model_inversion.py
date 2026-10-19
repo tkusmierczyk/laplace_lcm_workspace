@@ -45,9 +45,14 @@ Scored three ways, none of them circular:
 The authors' code is imported from a local clone, not copied: their repository carries no
 LICENSE file, so nothing of theirs is vendored into this one. `--ref-dir` points at it.
 
-Needs a 24 GB GPU: their `log_likelihood` builds a `(batch, dim, 2, 2)` float64 tensor per
-prefix-scan step, which is ~320 MB per step at `layer1` (200 704 dims) alone. The laptop's
-8 GB cannot hold it.
+Needs a 24 GB GPU, and only just. Their `log_likelihood` builds a `(batch, dim, 2, 2)`
+float64 tensor per prefix-scan step: 321 MB per step at `layer1` (200 704 dims) and their
+batch of 50, about 18 steps, roughly three such tensors alive per step. Storing all four
+layers' graphs at once needs ~32 GB and fails on a 24 GB card, so each layer's
+log-likelihood is recomputed in the backward pass instead (`torch.utils.checkpoint`). That
+is exact, since the scan is deterministic, and it keeps the authors' batch size and all
+four layers rather than shrinking the batch, which would also weaken the mean/variance
+match that every arm relies on. The laptop's 8 GB cannot hold it either way.
 
 Writes results/exp28_inversion.csv and a PNG grid per arm.
 """
@@ -67,6 +72,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.utils.checkpoint import checkpoint
 
 warnings.filterwarnings("ignore")
 
@@ -162,12 +168,11 @@ def layer_stats(model, hooks, X, layers, device, batch=16):
     for l in layers:
         s = acc[l]
         mu = s["mu"] / n
-        # second moments about the mean: E[xy] - mu_x mu_y
+        # Second moments about the mean, E[xy] - mu_x mu_y, in the band lengths
+        # fit_moments expects: s0 has `dim` entries, s1 has `dim - 1`, s2 has `dim - 2`.
         s0 = s["s0"] / n - mu * mu
-        s1 = torch.zeros_like(s0)
-        s1[:-1] = s["s1"][:-1] / n - mu[:-1] * mu[1:]
-        s2 = torch.zeros_like(s0)
-        s2[:-2] = s["s2"][:-2] / n - mu[:-2] * mu[2:]
+        s1 = s["s1"][:-1] / n - mu[:-1] * mu[1:]
+        s2 = s["s2"][:-2] / n - mu[:-2] * mu[2:]
         out[l] = {"mu": mu, "s0": s0, "s1": s1, "s2": s2}
     return out
 
@@ -241,7 +246,14 @@ def invert(model, hooks, bns, lcms, dims, target_idx, args, device, use_lcm):
             lbn = lbn + (f.mean(0) - STAT_MU[l]).pow(2).mean()
             lbn = lbn + (f.var(0) - STAT_VAR[l]).pow(2).mean()
             if use_lcm:
-                llcm = llcm + lcms[l].nll(f) / dims[l]
+                # Recompute the log-likelihood in the backward pass instead of storing it.
+                # Its parallel prefix scan holds a (batch, dim, 2, 2) float64 tensor per step
+                # -- 321 MB at layer1's 200 704 dims and batch 50, times ~18 steps times the
+                # three such tensors each step keeps, so ~18 GB for layer1 alone and ~32 GB
+                # for the four layers together. That does not fit a 24 GB card, and summing
+                # the four first keeps all four graphs alive at once. Recomputing is exact
+                # (the scan is deterministic) and leaves only one layer's graph live at a time.
+                llcm = llcm + checkpoint(lcms[l].nll, f, use_reentrant=False) / dims[l]
         return lbn, llcm
 
     for cfg in CONFIGS:
@@ -384,6 +396,8 @@ def main():
             torch.manual_seed(seed)
             np.random.seed(seed)
             print(f"\n  === seed {seed}, arm '{arm}' ===", flush=True)
+            if device == "cuda":
+                torch.cuda.reset_peak_memory_stats()
             lcms = {l: LCM_cls(dims[l]).to(device) for l in layers}
             for l in layers:
                 lcms[l].mu = STAT_MU[l].unsqueeze(0)
@@ -405,13 +419,15 @@ def main():
                 gen_heldout = heldout_features(norm.cpu(), device)
             prof_err = float(np.mean([abs(gen_prof[k] - real_prof[k]) for k in real_prof]))
             fd = frechet(gen_heldout, real_heldout)
+            peak_gb = (torch.cuda.max_memory_allocated() / 2**30 if device == "cuda" else 0.0)
             rows.append({"seed": seed, "arm": arm, "confidence": conf,
                          "profile_err": prof_err, "frechet_heldout": fd,
-                         "minutes": (time.perf_counter() - t0) / 60,
+                         "minutes": (time.perf_counter() - t0) / 60, "peak_gb": peak_gb,
                          **{f"gen_lag{k}": v for k, v in gen_prof.items()},
                          **{f"real_lag{k}": v for k, v in real_prof.items()}})
             print(f"    -> confidence {conf * 100:.1f}%  profile error {prof_err:.4f}  "
-                  f"Frechet(held-out) {fd:.1f}  [{rows[-1]['minutes']:.1f} min]", flush=True)
+                  f"Frechet(held-out) {fd:.1f}  [{rows[-1]['minutes']:.1f} min, "
+                  f"peak GPU {peak_gb:.1f} GB]", flush=True)
             try:
                 from torchvision.utils import save_image  # noqa: PLC0415
                 save_image(img[: min(16, len(img))],
@@ -427,11 +443,12 @@ def main():
     print(f"\n  Inverted images of one ImageNet class, {ARGS.seeds} seed(s). "
           f"The loop, its weights and its schedule are the authors'; only the covariance "
           f"fit differs between arms.")
-    print(f"\n  {'arm':12}{'confidence':>12}{'profile err':>13}{'Frechet held-out':>18}{'min':>7}")
+    print(f"\n  {'arm':12}{'confidence':>12}{'profile err':>13}{'Frechet held-out':>18}"
+          f"{'min':>7}{'peak GB':>9}")
     for arm in arms:
         g = df[df.arm == arm]
         print(f"  {arm:12}{g.confidence.mean() * 100:11.1f}%{g.profile_err.mean():13.4f}"
-              f"{g.frechet_heldout.mean():18.1f}{g.minutes.mean():7.1f}")
+              f"{g.frechet_heldout.mean():18.1f}{g.minutes.mean():7.1f}{g.peak_gb.max():9.1f}")
     print("\n  profile error: 0 would mean the generated features carry exactly the real"
           "\n  correlation-vs-distance curve (lower is better). Frechet distance is measured in"
           "\n  a ResNet-18 that was never inverted, so it cannot be gamed by the loop (lower is"

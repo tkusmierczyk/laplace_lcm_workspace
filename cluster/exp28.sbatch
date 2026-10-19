@@ -9,8 +9,10 @@
 #SBATCH --output=logs/%x-%j.out
 # Exp 28: model inversion -- the application the covariance model was built for. Needs a
 # 24 GB card: the authors' log-likelihood keeps a (batch, dim, 2, 2) float64 tensor per
-# prefix-scan step under autograd, ~320 MB per step at layer1's 200 704 dims, so roughly
-# 11 GB for the four layers plus ~3 GB of ResNet activations at batch 50.
+# prefix-scan step under autograd, ~320 MB per step at layer1's 200 704 dims. Holding all
+# four layers' graphs at once needs ~32 GB and was killed on a 4090 (job 541487); the script
+# now recomputes each layer's log-likelihood in the backward pass, which leaves one layer's
+# graph live at a time (~18 GB) plus ~3 GB of ResNet activations at batch 50.
 #
 # Budget: 3 arms x ~3400 inversion steps, about 1.5-2.5 GPU-hours for one class and one
 # seed -- deliberately under the 4-GPU-hour threshold that needs asking first.
@@ -34,6 +36,9 @@ singularity exec --nv -B "$HOME:$HOME" -B "$DATA:$DATA" -B "$SHARED:$SHARED" "$S
   source .env/bin/activate
   export PYTHONPATH=$PROJ/experiments:$PROJ/Laplace
   export TORCH_HOME=$SHARED/laplace_lcm/torch
+  # The prefix scan allocates and frees ~320 MB blocks every step, which fragments the
+  # 24 GB card; the last failure had 244 MB reserved-but-unusable.
+  export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
   export OMP_NUM_THREADS=\${SLURM_CPUS_PER_TASK:-8}
   python -c 'import torch, torchvision, scipy, PIL; print(\"torch\", torch.__version__, \"| torchvision\", torchvision.__version__, \"| cuda\", torch.cuda.is_available())'
   python -u experiments/exp28_model_inversion.py \
