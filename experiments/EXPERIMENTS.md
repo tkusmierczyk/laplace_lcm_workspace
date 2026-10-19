@@ -142,9 +142,15 @@ worse than diagonal.
 | 20 | `exp20_kron_lcm_real.py` | Kron-LCM on real spectra, C=3 | **shift win is calibration, not structure; seriation exact** |
 | 21 | `exp21_kron_lcm_cnn.py` | Are *learned* feature maps chain-structured? | **no — effective rank 1.75 of 368; chain closes nothing** |
 | 22 | `exp22_reproduce_paper_claim.py` | Does our code reproduce the paper's own claim? | **yes — LCM beats diagonal at every layer** |
+| 23 | `exp23_conditional_prediction.py` | Is there *any* query where off-diagonal covariance beats a diagonal that has been given the best possible single variance scale? Predicting held-out points from other revealed points is scale-free, so it can only reflect shape | **yes — the first such query found; chain closes 47% of the gap at correlation 0.9, 71% at 0.99, and ties the diagonal at correlation 0 as it must** |
+| 24 | `exp24_batch_acquisition.py` | Same question as a *decision*: does structure change which points you choose to label, measured by error after labelling them? | **yes — chain matches the exact posterior, while a best-scaled diagonal stays 6.5 standard errors worse and loses even to random choice** |
+| 25 | `exp25_paper_scale_baselines.py`, `exp25_verify_moments.py` | The paper only compares against a diagonal. Does the chain still win against a low-rank model given the *same* number of stored numbers — and does the paper's fitting rule hold up? | **structure vindicated, fitting rule not: a closed-form fit of the same model beats the paper's by 3–25x and runs 30–1200x faster**; verified against exact dense algebra |
+| 26 | `exp26_conditional_real.py` | Does experiment 23's win survive on real data and on a trained network? | **only with little training data: 83% of the gap closed at 25 training points (4.6 standard errors), nothing once the posterior narrows; never on a learned feature map** |
+| 27 | `exp27_sample_structure.py` | The paper *samples* from its covariance to invent training data. Do samples carry the real spatial correlation? | **chain is the only cheap model that does (8 standard errors ahead at 65 536 dimensions); its one blind spot, vertical neighbours, is fixed by ordering along a space-filling curve** |
 
 Supporting diagnostics: `ctrl_ordering.py` (frozen-order control),
-`diag_matfree_init.py` (matrix-free fit initialization).
+`diag_matfree_init.py` (matrix-free fit initialization),
+`kron_lcm_checks.py` (the numbers quoted in the KFAC x LCM theory note).
 
 ---
 ---
