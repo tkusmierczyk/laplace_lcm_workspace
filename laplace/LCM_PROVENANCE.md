@@ -25,6 +25,29 @@ no filter at all. So the paper's continual-learning results (Tables 1-2) are pro
 `O(d^2)` dense covariance, and only the feature-likelihood results (Figure 4) and the
 inversion loss use the scalable path this file ports.
 
+**The two uses model different variables, which decides what any comparison is about.**
+Traced 2026-10-19 through `resnet32/continual_runner/task_contrastive_cl_runner.py`
+(the entry point behind the continual-learning tables) and `resnet32/utils.py`:
+
+| | Feature-likelihood and inversion loss | Continual-learning tables |
+|---|---|---|
+| File | `efficient_inversion/{resnet34,vit}/lcm.py` | `resnet32/inversion/lcm.py` (dense) |
+| Variables | the **flattened feature map**, e.g. `64 x 56 x 56 = 200 704` for one ResNet-34 layer | **channels only**: `LCM(m.num_features)` over each `BatchNorm2d`, so `16`-`512` |
+| Dimension | `~10^5`, which is why the `O(d)` filter exists | `~10^2`, where a dense covariance is free |
+| Target fitted | the features' own likelihood, through the filter | the empirical **correlation** matrix `R`, accumulated channel-wise by a streaming Welford update over the training set |
+| Fitting rule | gradient descent on `frobenius_dist_reduced` | `fit_lcm_correlation`: mean-squared error between `correlation()` and `R`, Adam, `lr = 0.01`, 200 epochs |
+| Across tasks | n/a | `R` is blended as `ratio_old * R_old + ratio_new * R_curr` by class counts, then the fit is re-run and the result frozen |
+| Switch | always on | skipped entirely when `alpha_frob = 0` |
+
+Two consequences for how our results should be claimed. First, the comparison between
+fitting rules at `d` up to `~2 x 10^5` belongs to the **left** column, which is the setting
+the scalable filter was built for and the only one where fitting cost matters. Second, the
+published **accuracy** gains come from the **right** column, where the covariance is over
+channels: there is no spatial neighbour relation there, so the learned coordinate `a` is
+ordering channels, which is exactly the case where this project found order to be
+recoverable by seriation but not learnable by gradient descent. A claim about the accuracy
+tables has to be tested in that configuration, not this one.
+
 ---
 
 ## 1. Why the sizes differ
