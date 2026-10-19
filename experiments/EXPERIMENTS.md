@@ -2181,14 +2181,38 @@ to be distinguishable at three standard deviations, even with one seed.
 Two findings are already firm, before the covariance arms finish.
 
 1. **The authors' zero-covariance baseline already reproduces the real correlation
-   structure almost exactly**, which leaves the covariance term very little room. Generated
-   against real correlation at each distance: 0.716 vs 0.722 at distance 1, 0.421 vs 0.455
-   at 2, 0.210 vs 0.269 at 4, 0.642 vs 0.640 at 7, 0.040 vs 0.063 at 49. This is a
-   confound the paper's own ablation does not isolate: the features are not drawn from the
-   covariance, they are produced by a convolutional network from optimised images, and
-   convolution plus the matched per-layer means and variances supply most of the spatial
+   structure almost exactly**, which leaves the covariance term very little room.
+
+   The first suspect was the measurement rather than the result. The profile was scored on
+   the deepest layer, whose spatial map is 7x7, so distances 1, 2 and 4 all sit inside one
+   row and distance 49 is already the next channel — the least demanding place to compare.
+   Re-scoring the same baseline on the two wide early layers, 3 seeds each, says the
+   measurement was not the explanation: profile error **0.0240 ± 0.0003** on the 56x56 map,
+   **0.0241 ± 0.0006** on the 28x28 map, **0.0250 ± 0.0012** on the 7x7 map. Generated
+   against real correlation on the 56x56 map, where the distances mean what they should:
+
+   | Distance | What it is | Generated | Real | Gap |
+   |---|---|---|---|---|
+   | 1 | next pixel in the row | +0.5283 | +0.5035 | 0.025 |
+   | 2 | two pixels along | +0.2282 | +0.2329 | 0.005 |
+   | 4 | four pixels along | +0.1356 | +0.1885 | 0.053 |
+   | 56 | the pixel directly below | +0.5255 | +0.4921 | 0.033 |
+   | 3136 | the next channel | −0.0022 | +0.0022 | 0.004 |
+
+   This is a confound the paper's own ablation does not isolate: the features are not drawn
+   from the covariance, they are produced by a convolutional network from optimised images,
+   and convolution plus the matched per-layer means and variances supply the spatial
    correlation for free. Experiment 27's result was about *sampling* from the model; this
    pathway never samples from it.
+
+   The contrast with Experiment 27 is sharp and worth stating. When the chain's own samples
+   were scored on the same metric, the chain tracked the within-row distances but **missed
+   the row-below direction badly** (0.230 against a true 0.922), and only re-ordering the
+   coordinates along a Hilbert curve recovered it. Here, with no covariance model at all,
+   both adjacency directions come out right (0.528 vs 0.504 along the row, 0.526 vs 0.492
+   below it) along with the near-zero cross-channel correlation. The network supplies the
+   structure the covariance model was brought in to impose, and supplies it better than the
+   model's own samples do.
 2. **The covariance term costs about 350× the rest of the loop.** The whole 3400-step
    schedule takes 2.0 minutes without it and 12.4 seconds *per step* with it, and peak
    memory goes from 2.1 GB to 14.3 GB. Whatever the term buys has to be weighed against
