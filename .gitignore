@@ -9,8 +9,9 @@ Laplace/
 __pycache__/
 *.py[cod]
 
-# Local, machine-specific Claude Code permissions.
+# Local, machine-specific editor and tooling settings.
 .claude/settings.local.json
+runcommand.txt
 
 # Third-party reference code (the paper authors' implementation), cloned for
 # comparison. Not ours to version.
