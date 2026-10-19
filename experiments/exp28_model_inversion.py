@@ -45,14 +45,18 @@ Scored three ways, none of them circular:
 The authors' code is imported from a local clone, not copied: their repository carries no
 LICENSE file, so nothing of theirs is vendored into this one. `--ref-dir` points at it.
 
-Needs a 24 GB GPU, and only just. Their `log_likelihood` builds a `(batch, dim, 2, 2)`
-float64 tensor per prefix-scan step: 321 MB per step at `layer1` (200 704 dims) and their
-batch of 50, about 18 steps, roughly three such tensors alive per step. Storing all four
-layers' graphs at once needs ~32 GB and fails on a 24 GB card, so each layer's
-log-likelihood is recomputed in the backward pass instead (`torch.utils.checkpoint`). That
-is exact, since the scan is deterministic, and it keeps the authors' batch size and all
-four layers rather than shrinking the batch, which would also weaken the mean/variance
-match that every arm relies on. The laptop's 8 GB cannot hold it either way.
+MEMORY, WHICH THEIR PUBLISHED SETTINGS DO NOT FIT ON A 24 GB CARD. Their `log_likelihood`
+builds a `(batch, dim, 2, 2)` float64 tensor per prefix-scan step: 321 MB per step at
+`layer1` (200 704 dims) and their batch of 50, about 18 steps, roughly three such tensors
+alive per step. Measured on a 4090: all four layers at once needs ~32 GB (job 541487 died at
+22.7 GB allocated), and even one layer at a time needs ~20 GB, which still does not fit
+beside the ResNet's own activations (job 541566 died at 22.9 GB). Two changes bring it down,
+neither of which touches the experiment: each layer's log-likelihood is recomputed in the
+backward pass rather than stored, and the batch is split *inside* the likelihood, which
+`layer_nll` shows is exact. The batch that the images, the cross-entropy and the
+mean/variance match see is still their 50, so the baseline is unchanged -- simply shrinking
+the batch would have weakened the mean/variance match that every arm depends on, their
+`W_LCM = 0` ablation included. The laptop's 8 GB cannot hold it regardless.
 
 Writes results/exp28_inversion.csv and a PNG grid per arm.
 """
@@ -228,6 +232,41 @@ def fit_moments(lcms, stats, layers):
         del est
 
 
+def layer_nll(module, f, chunk):
+    """Their per-layer negative log-likelihood, with the batch split to bound memory.
+
+    Why this is exact rather than an approximation: their `log_likelihood` ends in
+    `ll_elements.sum(dim=1).mean()`, a mean over images of each image's total, and every
+    other quantity it computes (the sorted coordinates, the innovation variances, the Kalman
+    gains, the unbatched prefix scan) depends only on the parameters, not on the batch. So a
+    size-weighted mean over chunks equals the whole-batch value, and the gradients add the
+    same way.
+
+    Checked directly against their module, chunk sizes 1/3/4/7 against the whole batch of
+    10: the value agrees to 3e-14 and the gradient with respect to the images -- the only
+    thing this loop optimises -- to 2e-16, i.e. exactly. The gradient with respect to the
+    covariance parameters differs by ~3e-7, which is their own float32 downcasts at lines 69
+    and 99 of `lcm.py` showing up under reassociation, and is irrelevant here because those
+    parameters are frozen during inversion (only the Frobenius *fit* trains them, and that
+    uses their Frobenius distance, not this likelihood, and is not chunked).
+
+    Why it is needed: the batched scan keeps a `(chunk, dim, 2, 2)` float64 tensor per step,
+    about three of them alive across ~18 steps, which is ~20 GB for `layer1` alone at their
+    batch of 50 -- more than a 24 GB card holds even when only one layer's graph is live
+    (measured: job 541566 died at 22.9 GB inside a single layer's recompute). Chunking is
+    the only lever here that leaves the experiment itself untouched: the batch the images,
+    the cross-entropy and the mean/variance match see is still 50.
+    """
+    n = f.shape[0]
+    if chunk <= 0 or chunk >= n:
+        return checkpoint(module.nll, f, use_reentrant=False)
+    out = 0.0
+    for i in range(0, n, chunk):
+        part = f[i:i + chunk]
+        out = out + checkpoint(module.nll, part, use_reentrant=False) * (part.shape[0] / n)
+    return out
+
+
 def invert(model, hooks, bns, lcms, dims, target_idx, args, device, use_lcm):
     """The authors' inversion loop, verbatim in structure, weights and schedule."""
     from torchvision import transforms  # noqa: PLC0415
@@ -246,14 +285,7 @@ def invert(model, hooks, bns, lcms, dims, target_idx, args, device, use_lcm):
             lbn = lbn + (f.mean(0) - STAT_MU[l]).pow(2).mean()
             lbn = lbn + (f.var(0) - STAT_VAR[l]).pow(2).mean()
             if use_lcm:
-                # Recompute the log-likelihood in the backward pass instead of storing it.
-                # Its parallel prefix scan holds a (batch, dim, 2, 2) float64 tensor per step
-                # -- 321 MB at layer1's 200 704 dims and batch 50, times ~18 steps times the
-                # three such tensors each step keeps, so ~18 GB for layer1 alone and ~32 GB
-                # for the four layers together. That does not fit a 24 GB card, and summing
-                # the four first keeps all four graphs alive at once. Recomputing is exact
-                # (the scan is deterministic) and leaves only one layer's graph live at a time.
-                llcm = llcm + checkpoint(lcms[l].nll, f, use_reentrant=False) / dims[l]
+                llcm = llcm + layer_nll(lcms[l], f, args.nll_chunk) / dims[l]
         return lbn, llcm
 
     for cfg in CONFIGS:
@@ -360,6 +392,9 @@ def main():
     p.add_argument("--n-real", type=int, default=256, help="real images used to fit and to score")
     p.add_argument("--lcm-epochs", type=int, default=50, help="theirs: 50")
     p.add_argument("--iters-scale", type=float, default=1.0, help="<1 shortens every stage")
+    p.add_argument("--nll-chunk", type=int, default=25,
+                   help="images per chunk inside the covariance term; 0 uses the whole batch. "
+                        "Exact either way -- see layer_nll")
     p.add_argument("--seeds", type=int, default=1)
     p.add_argument("--out-dir", default=None)
     p.add_argument("--tag", default="exp28_inversion")

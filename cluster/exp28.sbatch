@@ -10,9 +10,10 @@
 # Exp 28: model inversion -- the application the covariance model was built for. Needs a
 # 24 GB card: the authors' log-likelihood keeps a (batch, dim, 2, 2) float64 tensor per
 # prefix-scan step under autograd, ~320 MB per step at layer1's 200 704 dims. Holding all
-# four layers' graphs at once needs ~32 GB and was killed on a 4090 (job 541487); the script
-# now recomputes each layer's log-likelihood in the backward pass, which leaves one layer's
-# graph live at a time (~18 GB) plus ~3 GB of ResNet activations at batch 50.
+# four layers' graphs at once needs ~32 GB (job 541487, killed at 22.7 GB), and one layer at
+# a time still needs ~20 GB (job 541566, killed at 22.9 GB). The script now recomputes each
+# layer's log-likelihood in the backward pass AND splits the batch inside the likelihood,
+# which is exact; NLL_CHUNK sets that split. Everything else still sees the full batch.
 #
 # Budget: 3 arms x ~3400 inversion steps, about 1.5-2.5 GPU-hours for one class and one
 # seed -- deliberately under the 4-GPU-hour threshold that needs asking first.
@@ -52,6 +53,7 @@ singularity exec --nv -B "$HOME:$HOME" -B "$DATA:$DATA" -B "$SHARED:$SHARED" "$S
     --n-real ${NREAL:-256} \
     --lcm-epochs ${LCM_EPOCHS:-50} \
     --iters-scale ${ITERS_SCALE:-1.0} \
+    --nll-chunk ${NLL_CHUNK:-25} \
     --seeds ${SEEDS:-1} \
     --tag ${TAG:-exp28_inversion}
 "
