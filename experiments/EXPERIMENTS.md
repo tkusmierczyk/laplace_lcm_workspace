@@ -147,6 +147,7 @@ worse than diagonal.
 | 25 | `exp25_paper_scale_baselines.py`, `exp25_verify_moments.py` | The paper only compares against a diagonal. Does the chain still win against a low-rank model given the *same* number of stored numbers — and does the paper's fitting rule hold up? | **structure vindicated, fitting rule not: a closed-form fit of the same model beats the paper's by 3–25x and runs 30–1200x faster**; verified against exact dense algebra |
 | 26 | `exp26_conditional_real.py` | Does experiment 23's win survive on real data and on a trained network? | **only with little training data: 83% of the gap closed at 25 training points (4.6 standard errors), nothing once the posterior narrows; never on a learned feature map** |
 | 27 | `exp27_sample_structure.py` | The paper *samples* from its covariance to invent training data. Do samples carry the real spatial correlation? | **chain is the only cheap model that does (8 standard errors ahead at 65 536 dimensions); its one blind spot, vertical neighbours, is fixed by ordering along a space-filling curve** |
+| 28 | `exp28_model_inversion.py` | The decisive downstream test: run the authors' *own* image-inversion loop unchanged and swap only the covariance fit. Does off-diagonal structure improve the invented images, and does our closed-form fit improve them further? | **in flight** — their `W_LCM = 0` ablation is itself a diagonal mean/variance match, so this isolates off-diagonal structure exactly |
 
 Supporting diagnostics: `ctrl_ordering.py` (frozen-order control),
 `diag_matfree_init.py` (matrix-free fit initialization),
@@ -2103,11 +2104,15 @@ Kept here so that "not done" is never mistaken for "does not work".
 
 ### Promising, identified, not run
 
-1. **Model inversion — the paper's own application.** REMIX uses the fitted covariance to
-   *generate* feature maps for data-free continual learning. Sampling is a structure-only
-   probe by construction: a diagonal produces white-noise feature maps at **any** scale,
-   so no temperature can imitate a smooth sample. This is both the paper's actual use case
-   and the cleanest remaining test of the chain. Needs a GPU; not started.
+1. ~~**Model inversion — the paper's own application.**~~ **Now Exp 28, built on the
+   authors' own loop** (cloned to `reference/REMIX`, imported rather than copied since
+   their repository carries no LICENSE). Their `W_LCM = 0` ablation keeps the per-layer
+   mean/variance match, so it *is* the diagonal control this project kept constructing by
+   hand, and the covariance term's whole contribution is off-diagonal structure. Scored on
+   the inverted network's confidence, Exp 27's correlation-profile error, and Frechet
+   distance in a held-out ResNet-18 that was never inverted. Needs a 24 GB GPU: their
+   log-likelihood holds a `(batch, dim, 2, 2)` float64 tensor per prefix-scan step under
+   autograd, ~11 GB across the four ResNet-34 layers.
 2. **The quantitative claim of Tables 1–2** (+0.51 to +1.48 p.p. continual-learning
    accuracy on CIFAR-100 / Tiny-ImageNet, +0.12/+0.31 on ViT) has never been independently
    checked. Both datasets are already on the cluster (`cifar-100-python`,
