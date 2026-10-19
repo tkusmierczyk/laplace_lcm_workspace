@@ -7,6 +7,24 @@
 **This file:** ~600 lines, ~300 executable. This document explains every difference,
 so the port stays auditable.
 
+**Re-verified 2026-10-19** against a fresh clone of that repository (kept outside git at
+`reference/REMIX` in the experiments repo, since it is third-party code). Confirmed by
+inspection: the parameterisation is identical (`u_raw` zeros, `w = 0.1`, `a = linspace(-1, 1, dim)`),
+so is the `exp(-|a_i - a_j|)` kernel, and so is the innovations filter — a 2x2 matrix
+parallel-prefix product with per-step max-abs renormalisation, `S = w^2 P_pred + u`,
+`K = P_pred w / S`, `alpha = exp(-dt)(1 - K w)`, `v = diff - w phi m_prev`, summed over
+dimensions and averaged over the batch. The three claims this document already made about
+the reference also hold: `lcm.py` contains no fitting, no sampling and no standalone
+log-determinant, and its `laplace_kernel()` is never called.
+
+**The repository ships four copies of `lcm.py`**, and they are not the same model:
+`efficient_inversion/{resnet34,vit}/lcm.py` are the `O(d)` filter above (differing from
+each other by 10 lines), while `clip/inversion/lcm.py` and `resnet32/inversion/lcm.py` are
+36-line **dense** variants exposing `covariance()`, `correlation()` and `forward()`, with
+no filter at all. So the paper's continual-learning results (Tables 1-2) are produced by an
+`O(d^2)` dense covariance, and only the feature-likelihood results (Figure 4) and the
+inversion loss use the scalable path this file ports.
+
 ---
 
 ## 1. Why the sizes differ
@@ -65,7 +83,7 @@ docstrings (the reference has one comment line).
 ### 3b. Paper appendices absent from the reference file
 | function | implements |
 |---|---|
-| `fit_frobenius` | **Appendix A** — the matrix-free Frobenius objective. The reference fits implicitly by backpropagating its inversion loss; this file must fit LCM to a *given* GGN |
+| `fit_frobenius` | **Appendix A** — the matrix-free Frobenius objective. **Correction (2026-10-19):** this row previously said the reference "fits implicitly by backpropagating its inversion loss". That is wrong. The reference *does* fit explicitly, just not in `lcm.py`: `efficient_inversion/resnet34/utils.py:frobenius_dist_reduced(u, a, w, V)`, driven by Adam in `synthetic_samples.py:138-143` as `frob / D**2`. Our objective is **term-for-term identical** — `sum(u**2)` ↔ `(d**2).sum()`, `xAx_sum(2a, w**2)` ↔ `(w2 * kernel_matvec(2a, w2)).sum()`, `2*sum(u*w**2)` ↔ `2*(d*w2).sum()`, `-(2/B)*sum(u*sum(V**2))` ↔ `-2*(d*(V**2).mean(0)).sum()`, `-(2/B)*xAx_sum(a, V*w)` ↔ `-2*(wv*kernel_matvec(a, wv)).sum(-1).mean()`. Their `frobenius_dist` adds the constant `sum(((V.T@V)/B)**2) = ||S_hat||_F^2`, which we drop (see the `fit_frobenius` docstring). Two deviations: their `xAx_sum` wraps the quadratic form in `torch.abs()`, guarding the sign numerically; and they evaluate `K(a)x` with a complex-arithmetic prefix scan where we use blocked rescaling (§3c) |
 | `kernel_matvec`, `_decaying_prefix` | **Appendix B** — the `O(d)` prefix/suffix-sum evaluation of `K(a)x`. Not present in the reference, which only has the dense kernel |
 | `fit_dense` | dense counterpart of the above, used for validation and the moderate-`d` regime |
 
