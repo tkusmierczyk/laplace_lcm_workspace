@@ -2097,7 +2097,7 @@ Kept here so that "not done" is never mistaken for "does not work".
 
 | Gap | State |
 |---|---|
-| Exp 25 at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | **Running** on trzmiel (job 541456, 10 CPUs, 32G, ~3.5 h expected). Three submission faults were fixed to get there: a 16-CPU request against the `quick` QoS 10-CPU cap, `quota` missing on the compute node failing the setup job under `set -e` (which cancelled the `afterok` dependants), and a 64G memory request that pended on Resources while 52 CPUs sat idle |
+| Exp 25 at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | **Running** on trzmiel (job 541479, 10 CPUs, 48G, ~5 h expected; seed 0 complete at all three sizes). Four submission faults were fixed to get there: a 16-CPU request against the `quick` QoS 10-CPU cap; `quota` missing on the compute node, which failed the setup job under `set -e` and so cancelled the `afterok` dependants; a 64G memory request that pended on Resources while 52 CPUs sat idle; and then 32G, which was enough for the laptop's 1200 images but not for the 3000 submitted, so job 541456 was OOM-killed partway through `D = 65536`. Now 48G, with the feature matrix preallocated instead of grown by `torch.cat` |
 | Exp 25 locally at `D` up to 65536, 3 seeds | **Done**, 3 seeds — table above; verified against dense Cholesky |
 | Exp 27 on the cluster: CIFAR-100, 5 seeds, `D` to 65536 | **Done** (job 540753, 1 h 29 m) — table above; the moment fit leads by ~8σ |
 | ~~Library `lowrank` baseline~~ | **Closed, negatively** — see the table above. Not an install problem: upstream pins `asdfghjkl==0.1a4`, which renamed its module to `asdl` and dropped the four functions `AsdfghjklHessian` imports. Unblocking it means writing `eig_lowrank` ourselves |
@@ -2110,9 +2110,20 @@ Kept here so that "not done" is never mistaken for "does not work".
    mean/variance match, so it *is* the diagonal control this project kept constructing by
    hand, and the covariance term's whole contribution is off-diagonal structure. Scored on
    the inverted network's confidence, Exp 27's correlation-profile error, and Frechet
-   distance in a held-out ResNet-18 that was never inverted. Needs a 24 GB GPU: their
+   distance in a held-out ResNet-18 that was never inverted.
+
+   **Their published loop does not fit the 24 GB card its batch size implies.** The
    log-likelihood holds a `(batch, dim, 2, 2)` float64 tensor per prefix-scan step under
-   autograd, ~11 GB across the four ResNet-34 layers.
+   autograd: 321 MB at `layer1`'s 200 704 dimensions and their batch of 50, about 18 steps,
+   roughly three such tensors alive per step. Summing the four layers' losses before the
+   backward pass keeps all four graphs at once, about 32 GB — an earlier note here said
+   11 GB, which was an underestimate, and the first full run was killed by it after 17
+   seconds with 22.7 GB allocated (job 541487). The fix recomputes each layer's
+   log-likelihood during the backward pass (`torch.utils.checkpoint`), which is exact
+   because the scan is deterministic and leaves one layer's graph live at a time. That
+   keeps the authors' batch size and all four layers; shrinking the batch instead would
+   weaken the feature mean/variance match that *every* arm depends on, including their own
+   `W_LCM = 0` ablation, and so would change the baseline rather than just the budget.
 2. **The quantitative claim of Tables 1–2** (+0.51 to +1.48 p.p. continual-learning
    accuracy on CIFAR-100 / Tiny-ImageNet, +0.12/+0.31 on ViT) has never been independently
    checked. Both datasets are already on the cluster (`cifar-100-python`,
