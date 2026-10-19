@@ -3,7 +3,8 @@
 #SBATCH --partition=cpu
 #SBATCH --qos=quick
 #SBATCH --cpus-per-task=10   # the `quick` QoS caps a job at 10 CPUs
-#SBATCH --mem=64G
+#SBATCH --mem=32G   # peak ~10-12 GB: the D=196608 feature matrix is 4.7 GB,
+                    # transiently doubled by the cat in layer_features
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x-%j.out
 # Exp 25: the paper's Figure 4 claim at the paper's scale (D up to ~2e5), against a
