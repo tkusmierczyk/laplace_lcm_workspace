@@ -2208,9 +2208,60 @@ the arm whose features end up furthest from real ones and whose images score wor
 held-out network. In this loop the term behaves as a smoothness penalty, and satisfying it
 blurs the features rather than structuring them.
 
+### What each fitted covariance actually imposes — the measured mechanism
+
+Neither the likelihood score nor the loss curve shows the property responsible, so it was
+measured directly (`fit_report` in the same script, job 542802): per layer, the span of the
+fitted coordinates, the median correlation the fit implies between neighbouring
+coordinates, and the fitted variance against the real feature variance. The fit depends only
+on the real images and the seed, not on the inversion schedule, so these are the same
+covariances the two 12-hour runs used — confirmed because the moment fit's coordinate spans
+reproduce those runs' to the decimal.
+
+| Layer | Their Frobenius fit: coordinate span | implied neighbour correlation | fitted ÷ real feature variance | Our closed form: coordinate span | implied neighbour correlation | fitted ÷ real feature variance |
+|---|---|---|---|---|---|---|
+| layer1 | 0.0 | 0.0002 | **3.06×** | 817 775 | 0.569 | 1.000 |
+| layer2 | 0.0 | 0.0000 | **6.81×** | 340 766 | 0.443 | 1.000 |
+| layer3 | 0.0 | 0.0000 | **16.03×** | 141 889 | 0.477 | 1.000 |
+| layer4 | 1.2 | 0.0002 | 0.63× | 16 476 | 0.849 | 1.000 |
+
+**After the authors' own fitting rule, their structured covariance has no structure left.**
+The coordinate span collapses to zero at three of the four layers. With every coordinate at
+one position the kernel `exp(-|aᵢ-aⱼ|)` is all-ones, so the model can only be a diagonal
+plus a rank-one term — and the implied neighbour correlation of 0.0002 at zero span is the
+measurement that the rank-one weights went to zero as well. What is left is a diagonal
+Gaussian with variances 3×, 7× and 16× the real feature variances. So their 14.3-point
+Fréchet gain is **a loose diagonal regulariser, not a correlation prior.** That is this
+project's own oracle-scale finding — that wins attributed to structured covariance are a
+variance-*scale* effect a tempered diagonal reproduces — turning up inside the reference
+implementation. It is invisible from the loss curve, which falls smoothly and looks
+converged, and it also explains the flat loss trace: variances several times too large make
+a broad, weak Gaussian whose gradients barely move anything.
+
+**And a correct covariance is a worse prior here, for a structural reason.** Our fit matches
+the feature variances exactly, by construction, and imposes real neighbour correlation of
+0.44 to 0.85. Minimising a Gaussian negative log-likelihood *with respect to the data* is
+mode-seeking: a correlated precision penalises differences between neighbouring
+coordinates, so driving the term down smooths the feature map toward its mean. That is
+visible in the over-correlation above, and it is the exact opposite of Experiment 27, where
+*sampling* from the same chain reproduces real structure. The two uses of this covariance
+pull in opposite directions, which is why the sampling result gave no guidance here.
+
+**Consequence for how Experiment 25 should be claimed.** "Fit the chain by moments, not by
+the Frobenius objective" is correct as density estimation — Exp 25 measures it at up to
+196 608 dimensions — and *wrong as advice for this method*. A better density fit makes this
+loop's output worse. The two claims have to be scoped apart.
+
+One caution about the files: `results/exp28_fit_diag.csv` carries inversion metrics from the
+2.5-minute diagnostic run, not the full schedule, so its confidence of 0.57 and Fréchet
+distance of about 600 are not comparable with the table above. Only the fit table is the
+measurement.
+
 **What this comparison does and does not establish.** It answers the question it was built
 for: replace the fit inside their loop, change nothing else. It does **not** show our closed
-form is the worse model of these features, because the two arms are not weight-matched.
+form is the worse model of these features — Exp 25 shows the opposite, and the diagnostic
+above shows their fit is not a correlation model at all. Nor are the two arms
+weight-matched.
 Their loop multiplies the covariance term by one fixed weight, and the two fits hand it
 terms of very different scale and gradient size — 3.87 against 0.94 at the first step — so
 our arm is effectively regularised much harder. Re-tuning that weight per arm costs about
