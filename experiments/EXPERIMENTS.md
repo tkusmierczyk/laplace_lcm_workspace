@@ -2379,17 +2379,39 @@ construction. 3 seeds × 4 layers.
 | Our closed form with signs restored, natural order | 2 | 1.0090 ± 0.0108 | 0.00 |
 | Identity — predict zero correlation everywhere | 0 | 1.0000 | 0.00 |
 
-Spread is the standard deviation over the 12 values (3 seeds × 4 layers). An error of 1.0
-means "no better than predicting zero correlation everywhere", which makes the next point
-blunt.
+Spread is the standard deviation over the 12 values (3 seeds × 4 layers), and it is
+dominated by differences *between layers*, which cancel in a comparison. Since every arm in
+a cell was fitted to the same matrix, the contrasts that answer the question belong paired by
+seed and layer, and each is also worth reading as a share of the distance from their
+published rule to the stored-matrix floor — because a difference can be statistically clear
+and still buy almost none of the headroom available:
 
-**1. The falsifier is met: Experiment 25's advantage does not transfer.** Their 200-epoch
-rule reaches 0.6700, and the *same family and the same loss* trained 25× longer with a
-decayed learning rate reaches only 0.6246 — a gap of 0.045, under one standard deviation.
-**Their fitting budget is essentially at this family's ceiling here**, so unlike the large
-flattened-feature setting, their fitting is not the weak point. That arm exists precisely so
-a poor fit cannot be blamed ambiguously on the budget or on the family; here it is the
-family.
+| Contrast, paired over 12 cells | Mean | s.e. | Standard errors | Same sign | Share of the 0.6492 headroom |
+|---|---|---|---|---|---|
+| 25× fit budget, **ordering held fixed** | −0.0085 | 0.0037 | 2.3 | 8/12 | **1.3%** |
+| Seriated ordering, at their budget | −0.0370 | 0.0118 | 3.1 | 9/12 | 5.7% |
+| Rank-2 factor vs the over-trained chain | −0.0978 | 0.0153 | **6.4** | **12/12** | 15.1% |
+| Rank-2 factor vs their published rule | −0.1432 | 0.0199 | **7.2** | **12/12** | 22.1% |
+
+An error of 1.0 means "no better than predicting zero correlation everywhere", which makes
+the second point below blunt.
+
+**1. The falsifier is met: Experiment 25's advantage does not transfer, and the fitting
+budget is not the binding constraint.** The over-trained arm exists precisely so a poor fit
+cannot be blamed ambiguously on the budget or on the family. Isolating it properly matters,
+because that arm changes *two* things at once — it both over-trains and starts from seriated
+coordinates. Holding the ordering fixed, **25× more optimisation of the same loss moves the
+error by 0.0085, which is 1.3% of the available headroom**, at 2.3 standard errors and not
+even consistent in sign (8 of 12 cells). So their published 200-epoch budget is close to
+what this family can do here, and unlike the large flattened-feature setting their fitting
+is not the weak point.
+
+This supersedes a cruder reading of the same data: the raw 0.6700 against 0.6246 is a gap of
+0.045, but most of that is the ordering, not the budget. Treated as the headline it would
+also have been weak evidence — two heavily overlapping intervals from 3 seeds are equally
+consistent with a small real gain that more optimisation would widen. Properly isolated the
+budget effect is both smaller and better determined, and the conclusion rests on points 4
+and 5 below rather than on this one.
 
 **2. Our closed-form estimator fails outright in this setting** — 0.986 to 0.995, barely
 distinguishable from predicting no correlation at all, at every layer. This is the sharpest
@@ -2406,19 +2428,24 @@ library. **At full scale it does not hold**: 0.9897 ± 0.0538 seriated and 1.009
 better than the unsigned version, with the only real gain at the narrowest layer (0.951 at
 32 channels). It stays in the experiment and is **not** promoted to `Laplace/laplace/lcm.py`.
 
-**4. Seriation helps a little, consistently.** Re-ordering channels by the Fiedler vector of
-the absolute-correlation graph before fitting moves their rule from 0.6700 to 0.6330, about
-0.7 standard deviations, and the gain is largest at the widest layer (0.6582 → 0.5881 at 512
-channels). Only the coordinate initialisation changes; the loss, optimiser, learning rate
-and 200 epochs are theirs untouched.
+**4. Ordering, not budget, is what is left to gain inside this family — and it is still
+small.** Re-ordering channels by the Fiedler vector of the absolute-correlation graph before
+fitting moves their rule by 0.0370 (3.1 standard errors, 9 of 12 cells), four times the
+effect of 25× more optimisation, and the gain is largest at the widest layer (0.6582 →
+0.5881 at 512 channels). Only the coordinate initialisation changes; the loss, optimiser,
+learning rate and 200 epochs are theirs untouched. That is a free improvement to their
+method, but it still closes only 5.7% of the distance to the stored matrix.
 
-**5. The chain is simply the wrong family for channel correlation.** A rank-2 factor model
-reaches 0.5268 — better than the chain's *over-trained ceiling* — at every layer, and the
-margin widens with width (0.4247 against 0.5749 at 512 channels). The comparison needs
-stating precisely: rank-2 uses **three** free parameters per channel against the chain's
-two, so it is not budget-matched, and rank-1, which *is* budget-matched at two, is clearly
-worse (0.7482). The win needs the extra parameter — but one extra parameter per channel buys
-more than fixing the chain's fit ever could.
+**5. The chain is simply the wrong family for channel correlation — this is the
+load-bearing result.** A rank-2 factor model beats the chain's *over-trained ceiling* by
+0.0978 at **6.4 standard errors with the same sign in all 12 cells**, and beats their
+published rule by 0.1432 at 7.2 standard errors, closing 22% of the headroom against the
+ordering fix's 5.7% and the budget's 1.3%. The margin widens with width (0.4247 against
+0.5749 at 512 channels). The comparison needs stating precisely: rank-2 uses **three** free
+parameters per channel against the chain's two, so it is not budget-matched, and rank-1,
+which *is* budget-matched at two, is clearly worse (0.7482). The win needs the extra
+parameter — but one extra parameter per channel buys several times more than every available
+fix to the chain's fitting put together.
 
 ### Why, measured rather than argued
 
@@ -2440,10 +2467,9 @@ the identity. The natural-order arms also confirm that channels have no intrinsi
 neighbour relation to exploit.
 
 **What this means for the paper, which is the more interesting consequence.** Their accuracy
-gains cannot be coming from a well-matched covariance: in their own configuration, their fit
-is near this family's ceiling, and the family leaves two thirds of the off-diagonal
-structure unexplained while a cheaper low-rank model at a slightly larger budget does far
-better. Combined with Experiment 28's finding that their fitted covariance degenerates to a
+gains cannot be coming from a well-matched covariance: the family leaves two thirds of the
+off-diagonal structure unexplained, no amount of extra fitting recovers it, and a low-rank
+model at one extra parameter per channel does several times better. Combined with Experiment 28's finding that their fitted covariance degenerates to a
 loose diagonal in the inversion loop, the structured covariance is not doing the work it is
 credited with in either of the paper's two uses.
 

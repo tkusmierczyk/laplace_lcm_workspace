@@ -414,7 +414,40 @@ def main():
           "\n  correlation everywhere (lower is better). 'store_full_matrix' keeps the whole"
           "\n  fitting-split matrix, the O(C^2) memory this family exists to avoid, and is"
           "\n  the floor a structured fit is trying to approach.")
+    print_paired(df)
     print(f"\nsaved {path}")
+
+
+def print_paired(df):
+    """The contrasts that actually answer the question, paired and scaled.
+
+    The spread of each arm's mean above is dominated by differences between layers, which
+    cancel in a comparison: every arm in a cell was fitted to the same matrix, so the
+    contrasts belong paired by (seed, layer). Each one is also reported as a share of the
+    distance from their published rule to the stored-matrix floor, because a difference can
+    be statistically clear and still buy almost none of the available headroom -- which is
+    the question when deciding whether the fitting budget or the family is the constraint.
+    """
+    wide = df.pivot_table(index=["seed", "layer"], columns="arm", values="offdiag_err")
+    headroom = float(wide["published_mse"].mean() - wide["store_full_matrix"].mean())
+    contrasts = [
+        ("25x fit budget, ordering held fixed", "family_best_effort", "published_mse_seriated"),
+        ("seriated ordering, at their budget", "published_mse_seriated", "published_mse"),
+        ("rank-2 factor vs the over-trained chain", "factor_rank2", "family_best_effort"),
+        ("rank-2 factor vs their published rule", "factor_rank2", "published_mse"),
+    ]
+    print(f"\n  Paired contrasts, n={len(wide)} cells (seed x layer). Negative favours the"
+          f"\n  first arm named. 'Headroom' is the {headroom:.4f} between their published rule"
+          f"\n  and keeping the whole matrix.\n")
+    print(f"  {'contrast':42}{'mean':>9}{'s.e.':>8}{'s.e. away':>11}"
+          f"{'same sign':>11}{'headroom':>10}")
+    for label, a, b in contrasts:
+        d = wide[a] - wide[b]
+        se = float(d.std() / len(d) ** 0.5)
+        mean = float(d.mean())
+        same = int((d < 0).sum() if mean < 0 else (d > 0).sum())
+        print(f"  {label:42}{mean:+9.4f}{se:8.4f}{abs(mean) / max(se, 1e-12):11.1f}"
+              f"{f'{same}/{len(d)}':>11}{abs(mean) / headroom:9.1%}")
 
 
 if __name__ == "__main__":
