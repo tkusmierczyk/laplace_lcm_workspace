@@ -2327,6 +2327,135 @@ Two further findings, independent of which fit is used.
    rather than just the memory bill.
 
 ---
+
+## Experiment 29 — the fitting question in the configuration behind the paper's accuracy tables
+
+`exp29_channel_correlation_fit.py` · `results/exp29_channel_correlation.csv`
+
+**Why this exists.** Tracing the authors' continual-learning entry point showed that the
+paper uses its covariance in **two unrelated ways**, and that every experiment in this
+project up to here addressed only the first.
+
+1. A scan-based likelihood over **flattened feature maps** — about 200 000 dimensions —
+   which produces their likelihood and scalability figures. That is what Experiments 22,
+   25, 27 and 28 test.
+2. A **dense** covariance over **channels only**, one per `BatchNorm2d` layer, so 16 to 512
+   variables rather than 200 000. It is fitted by mean-squared error between the model's
+   correlation matrix and the empirical channel correlation — Adam, learning rate 0.01, 200
+   epochs — and *this* is the configuration behind the accuracy tables.
+
+Experiment 25 found that our closed-form moment fit beats their gradient fit decisively in
+the first setting, by 0.47 to 1.13 nats per dimension while fitting 18–20× faster. The
+obvious question is whether that transfers to the second. It also re-scopes the work: at
+16–512 variables the fitting-cost advantage is worthless, so the question is purely about
+fit quality, and the experiment is laptop-sized rather than the 12–36 GPU-hours first
+budgeted for it.
+
+**Pre-registered falsifier, stated before the run.** If their gradient rule matches the
+closed form on held-out correlation error here, the Experiment 25 result does not transfer
+to the configuration behind their accuracy tables, and the honest claim shrinks to the
+large flattened-feature setting only.
+
+Setup: a small convolutional network with a `BatchNorm2d` in every block trained on
+CIFAR-10, channel correlations collected at the authors' hook point (each batch-norm
+layer's input, flattened over positions), fitted on one half of the images and scored on
+the held-out half. The score is relative Frobenius error on the **off-diagonal only**, so it
+is scale-free and gives no arm credit for the unit diagonal every one of them has by
+construction. 3 seeds × 4 layers.
+
+### Result — the falsifier is met, and the family itself is the wrong shape
+
+| Arm — what it is | Free parameters per channel | Off-diagonal error (lower better) | Fit seconds |
+|---|---|---|---|
+| Store the whole empirical matrix — the `O(C²)` memory this family exists to avoid | C | **0.0208 ± 0.0043** | 0.00 |
+| Rank-2 factor model, renormalised to unit diagonal | 3 | **0.5268 ± 0.0846** | 0.00 |
+| The same chain family over-trained 25× past their budget | 2 | 0.6246 ± 0.0554 | 7.21 |
+| Their published rule, with seriated coordinates | 2 | 0.6330 ± 0.0543 | 0.30 |
+| **Their published rule, exactly as published** (200 epochs, lr 0.01) | 2 | 0.6700 ± 0.0452 | 0.30 |
+| Rank-1 factor model | 2 | 0.7482 ± 0.0530 | 0.01 |
+| Our closed form, seriated order | 2 | 0.9859 ± 0.0086 | 0.00 |
+| Our closed form with the coupling signs restored, seriated | 2 | 0.9897 ± 0.0538 | 0.00 |
+| Our closed form, natural channel order | 2 | 0.9953 ± 0.0047 | 0.00 |
+| Our closed form with signs restored, natural order | 2 | 1.0090 ± 0.0108 | 0.00 |
+| Identity — predict zero correlation everywhere | 0 | 1.0000 | 0.00 |
+
+Spread is the standard deviation over the 12 values (3 seeds × 4 layers). An error of 1.0
+means "no better than predicting zero correlation everywhere", which makes the next point
+blunt.
+
+**1. The falsifier is met: Experiment 25's advantage does not transfer.** Their 200-epoch
+rule reaches 0.6700, and the *same family and the same loss* trained 25× longer with a
+decayed learning rate reaches only 0.6246 — a gap of 0.045, under one standard deviation.
+**Their fitting budget is essentially at this family's ceiling here**, so unlike the large
+flattened-feature setting, their fitting is not the weak point. That arm exists precisely so
+a poor fit cannot be blamed ambiguously on the budget or on the family; here it is the
+family.
+
+**2. Our closed-form estimator fails outright in this setting** — 0.986 to 0.995, barely
+distinguishable from predicting no correlation at all, at every layer. This is the sharpest
+negative result in the project, and it is the mirror image of Experiment 25.
+
+**3. The sign fix does not rescue it, which overturns the provisional reading.** The
+estimator solves for `w²` and takes the positive square root, so every coupling it produces
+is positive — harmless on a flattened feature map, where neighbouring positions are almost
+always positively correlated, but wrong here. The sign is recoverable from the same band
+quantities at no parameter cost, because the decay factor is positive, so
+`sign(A[p,p+1]) = sign(w_p w_{p+1})` propagates along the chain. On an early small-scale
+check this improved the seriated fit from 0.98 to 0.88 and looked worth promoting into the
+library. **At full scale it does not hold**: 0.9897 ± 0.0538 seriated and 1.0090 natural, no
+better than the unsigned version, with the only real gain at the narrowest layer (0.951 at
+32 channels). It stays in the experiment and is **not** promoted to `Laplace/laplace/lcm.py`.
+
+**4. Seriation helps a little, consistently.** Re-ordering channels by the Fiedler vector of
+the absolute-correlation graph before fitting moves their rule from 0.6700 to 0.6330, about
+0.7 standard deviations, and the gain is largest at the widest layer (0.6582 → 0.5881 at 512
+channels). Only the coordinate initialisation changes; the loss, optimiser, learning rate
+and 200 epochs are theirs untouched.
+
+**5. The chain is simply the wrong family for channel correlation.** A rank-2 factor model
+reaches 0.5268 — better than the chain's *over-trained ceiling* — at every layer, and the
+margin widens with width (0.4247 against 0.5749 at 512 channels). The comparison needs
+stating precisely: rank-2 uses **three** free parameters per channel against the chain's
+two, so it is not budget-matched, and rank-1, which *is* budget-matched at two, is clearly
+worse (0.7482). The win needs the extra parameter — but one extra parameter per channel buys
+more than fixing the chain's fit ever could.
+
+### Why, measured rather than argued
+
+The same run records the three properties that decide it (`structure_stats`):
+
+| Layer | Channels | Mean abs. off-diagonal correlation | Share of off-diagonals that are negative | Negative couplings along the seriated chain | Share of the closed form's own `w²` clamped to zero | Share of eigenvalue mass in the top 2 directions |
+|---|---|---|---|---|---|---|
+| bn1 | 32 | 0.319 | 48.7% | 52.7% | 17.7% | 50.0% |
+| bn2 | 128 | 0.265 | 47.6% | 42.0% | 32.6% | 37.2% |
+| bn3 | 256 | 0.329 | 47.2% | 41.7% | 22.8% | 47.9% |
+| bn4 | 512 | 0.366 | 47.8% | 36.1% | 16.0% | 55.7% |
+
+Channel correlation is **about half negative** and **concentrated in a few global modes** —
+the two leading eigenvalues hold 37% to 56% of the mass. It is dense and low-rank, not a
+chain of local couplings. That is why a rank-2 model fits it and a chain does not, and why
+the closed form collapses: it can only emit positive couplings, and 16% to 33% of the
+amplitudes it implies come out negative and are clamped to zero, which drives the fit toward
+the identity. The natural-order arms also confirm that channels have no intrinsic
+neighbour relation to exploit.
+
+**What this means for the paper, which is the more interesting consequence.** Their accuracy
+gains cannot be coming from a well-matched covariance: in their own configuration, their fit
+is near this family's ceiling, and the family leaves two thirds of the off-diagonal
+structure unexplained while a cheaper low-rank model at a slightly larger budget does far
+better. Combined with Experiment 28's finding that their fitted covariance degenerates to a
+loose diagonal in the inversion loop, the structured covariance is not doing the work it is
+credited with in either of the paper's two uses.
+
+**Limits.** CIFAR-10 and a small network, not their ResNet-32 continual-learning pipeline,
+and it scores correlation reconstruction rather than end-to-end accuracy, so it does not
+test whether a better-fitting covariance would raise their accuracy numbers — only that
+theirs does not fit. The cross-task blending of old and new correlation matrices is not
+reproduced. Re-running with the diagnostic added reproduced the first run's numbers to
+within well under a seed's spread (their rule 0.6700 against 0.6677), but not bit-exactly,
+because the convolutions are non-deterministic.
+
+---
 ---
 
 ## Gap register
@@ -2376,8 +2505,14 @@ Kept here so that "not done" is never mistaken for "does not work".
    `tiny-imagenet-200`). Cost is above the 4-GPU-hour threshold, so it needs an explicit
    go-ahead.
 
-   **Approved as the next experiment after the image-inversion result lands**, and tracing
-   the authors' continual-learning entry point changed what it should test. That pipeline
+   **The fitting half of this is now Exp 29, done on the laptop** — their rule sits at the
+   chain family's ceiling over channels, our closed form fails there, and a rank-2 factor
+   model beats the family's ceiling. What is still unrun is the **end-to-end accuracy**
+   replication: whether any of that changes their reported accuracy. Exp 29 deliberately
+   scores correlation reconstruction instead, which is the cheap half.
+
+   Tracing the authors' continual-learning entry point changed what it should test. That
+   pipeline
    does *not* apply the covariance to the flattened feature map the way every experiment
    here has. It builds one dense covariance per `BatchNorm2d` over **channels only**
    (`LCM(m.num_features)`, so 16–512 variables, not ~200 000), accumulates the empirical
@@ -2400,10 +2535,27 @@ Kept here so that "not done" is never mistaken for "does not work".
    threshold is ever met by real features. Exp 21 already measured neighbour |corr| 0.7152
    against a mean of 0.2529 in a learned map, so this is not a foregone conclusion.
 4. **Why Frobenius loses.** `||A - S||_F^2` weights large eigenvalues and is nearly blind
-   to the small ones that dominate a log-det. If the `lcm_moments` result survives seeds
-   and scale, "fit the chain by moments, not Frobenius" is a one-line constructive
-   improvement to the published method, and the cheapest paper in the vicinity.
-5. **Streaming `Kron` accumulator** so `Laplace(..., hessian_structure="kron_lcm")` reaches
+   to the small ones that dominate a log-det. "Fit the chain by moments, not Frobenius"
+   survived seeds and scale in Exp 25 — but Exps 28 and 29 have since bounded it on both
+   sides, and the scoping now matters more than the claim. It is right as *density
+   estimation on flattened feature maps*; it makes the inversion loop's output **worse**,
+   because a better-fitting correlated Gaussian is a stronger smoothing prior (Exp 28); and
+   it fails outright over *channels*, the configuration behind their accuracy tables, where
+   the estimator's positive-only couplings cannot represent correlations that are half
+   negative (Exp 29). Any paper here has to carry that scoping, not just the headline.
+5. **Re-tune the covariance weight per arm in the inversion loop.** Exp 28's arms share one
+   fixed weight while the two fits hand the loop terms of very different scale — 3.87
+   against 0.94 at the first step — so our arm is regularised much harder. The diagnostic
+   makes this less of a confound than it looked, since their fit turns out to be a loose
+   diagonal rather than a correlation prior, but a per-arm sweep is the clean version. About
+   12 GPU-hours per point at their full schedule, so it needs an explicit go-ahead; a
+   shortened schedule would be the cheap first pass.
+6. **Does a better-fitting channel covariance raise their accuracy?** Exp 29 shows a rank-2
+   factor model reconstructs channel correlation far better than their chain. Substituting
+   it inside their continual-learning pipeline is the test of whether the covariance's fit
+   quality matters to the accuracy numbers at all. This is the natural follow-up to item 2
+   and shares its cost.
+7. **Streaming `Kron` accumulator** so `Laplace(..., hessian_structure="kron_lcm")` reaches
    `i >= 32k` without materialising `i^2`. Still the most valuable unwritten piece of
    implementation: Exp 19 showed the estimator itself runs at `i=65536` in 0.188 s, but the
    library entry point cannot feed it.
