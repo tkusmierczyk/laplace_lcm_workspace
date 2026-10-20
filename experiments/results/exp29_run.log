@@ -1,0 +1,167 @@
+  seed 0  bn1  C=32  mean |off-diagonal correlation| 0.304  negative off-diagonals 45%  negative couplings on the chain 45%  clamped w^2 9%  top-2 eigenvalue share 48%
+    store_full_matrix        off-diagonal error 0.0148      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6893      0.07s
+    published_mse_seriated   off-diagonal error 0.5990      0.06s
+    family_best_effort       off-diagonal error 0.5998      1.54s
+    moments_natural_order    off-diagonal error 0.9839      0.00s
+    moments_seriated         off-diagonal error 0.9650      0.00s
+    moments_signed_natural   off-diagonal error 1.0144      0.00s
+    moments_signed_seriated  off-diagonal error 0.8887      0.00s
+    factor_rank1             off-diagonal error 0.7829      0.00s
+    factor_rank2             off-diagonal error 0.5409      0.00s
+  seed 0  bn2  C=128  mean |off-diagonal correlation| 0.256  negative off-diagonals 48%  negative couplings on the chain 38%  clamped w^2 29%  top-2 eigenvalue share 35%
+    store_full_matrix        off-diagonal error 0.0294      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.7477      0.18s
+    published_mse_seriated   off-diagonal error 0.7325      0.26s
+    family_best_effort       off-diagonal error 0.7326      7.00s
+    moments_natural_order    off-diagonal error 0.9965      0.00s
+    moments_seriated         off-diagonal error 0.9879      0.00s
+    moments_signed_natural   off-diagonal error 1.0230      0.00s
+    moments_signed_seriated  off-diagonal error 1.0096      0.00s
+    factor_rank1             off-diagonal error 0.8324      0.00s
+    factor_rank2             off-diagonal error 0.6587      0.00s
+  seed 0  bn3  C=256  mean |off-diagonal correlation| 0.324  negative off-diagonals 49%  negative couplings on the chain 48%  clamped w^2 26%  top-2 eigenvalue share 49%
+    store_full_matrix        off-diagonal error 0.0260      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6535      0.46s
+    published_mse_seriated   off-diagonal error 0.6333      0.46s
+    family_best_effort       off-diagonal error 0.6301     11.44s
+    moments_natural_order    off-diagonal error 0.9980      0.00s
+    moments_seriated         off-diagonal error 0.9956      0.00s
+    moments_signed_natural   off-diagonal error 1.0091      0.00s
+    moments_signed_seriated  off-diagonal error 1.0186      0.00s
+    factor_rank1             off-diagonal error 0.7198      0.01s
+    factor_rank2             off-diagonal error 0.4912      0.00s
+  seed 0  bn4  C=512  mean |off-diagonal correlation| 0.361  negative off-diagonals 49%  negative couplings on the chain 34%  clamped w^2 18%  top-2 eigenvalue share 53%
+    store_full_matrix        off-diagonal error 0.0232      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6610      0.83s
+    published_mse_seriated   off-diagonal error 0.6240      0.83s
+    family_best_effort       off-diagonal error 0.6083     14.44s
+    moments_natural_order    off-diagonal error 0.9991      0.00s
+    moments_seriated         off-diagonal error 0.9881      0.00s
+    moments_signed_natural   off-diagonal error 1.0038      0.00s
+    moments_signed_seriated  off-diagonal error 1.0002      0.00s
+    factor_rank1             off-diagonal error 0.7181      0.01s
+    factor_rank2             off-diagonal error 0.4801      0.01s
+  seed 1  bn1  C=32  mean |off-diagonal correlation| 0.321  negative off-diagonals 49%  negative couplings on the chain 65%  clamped w^2 12%  top-2 eigenvalue share 51%
+    store_full_matrix        off-diagonal error 0.0197      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6567      0.08s
+    published_mse_seriated   off-diagonal error 0.5786      0.07s
+    family_best_effort       off-diagonal error 0.5537      1.76s
+    moments_natural_order    off-diagonal error 0.9942      0.00s
+    moments_seriated         off-diagonal error 0.9750      0.00s
+    moments_signed_natural   off-diagonal error 0.9872      0.00s
+    moments_signed_seriated  off-diagonal error 0.8845      0.00s
+    factor_rank1             off-diagonal error 0.7162      0.00s
+    factor_rank2             off-diagonal error 0.5381      0.00s
+  seed 1  bn2  C=128  mean |off-diagonal correlation| 0.271  negative off-diagonals 47%  negative couplings on the chain 45%  clamped w^2 32%  top-2 eigenvalue share 38%
+    store_full_matrix        off-diagonal error 0.0233      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.7593      0.11s
+    published_mse_seriated   off-diagonal error 0.7258      0.11s
+    family_best_effort       off-diagonal error 0.7035      3.26s
+    moments_natural_order    off-diagonal error 0.9966      0.00s
+    moments_seriated         off-diagonal error 0.9851      0.00s
+    moments_signed_natural   off-diagonal error 1.0108      0.00s
+    moments_signed_seriated  off-diagonal error 1.0207      0.00s
+    factor_rank1             off-diagonal error 0.8120      0.00s
+    factor_rank2             off-diagonal error 0.6400      0.00s
+  seed 1  bn3  C=256  mean |off-diagonal correlation| 0.332  negative off-diagonals 46%  negative couplings on the chain 38%  clamped w^2 20%  top-2 eigenvalue share 46%
+    store_full_matrix        off-diagonal error 0.0196      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6229      0.23s
+    published_mse_seriated   off-diagonal error 0.6245      0.23s
+    family_best_effort       off-diagonal error 0.6261      5.78s
+    moments_natural_order    off-diagonal error 0.9971      0.00s
+    moments_seriated         off-diagonal error 0.9887      0.00s
+    moments_signed_natural   off-diagonal error 1.0003      0.00s
+    moments_signed_seriated  off-diagonal error 0.9967      0.00s
+    factor_rank1             off-diagonal error 0.6982      0.00s
+    factor_rank2             off-diagonal error 0.5508      0.00s
+  seed 1  bn4  C=512  mean |off-diagonal correlation| 0.356  negative off-diagonals 49%  negative couplings on the chain 34%  clamped w^2 14%  top-2 eigenvalue share 54%
+    store_full_matrix        off-diagonal error 0.0209      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6367      0.40s
+    published_mse_seriated   off-diagonal error 0.5757      0.40s
+    family_best_effort       off-diagonal error 0.5653      9.88s
+    moments_natural_order    off-diagonal error 0.9990      0.00s
+    moments_seriated         off-diagonal error 0.9945      0.00s
+    moments_signed_natural   off-diagonal error 1.0060      0.00s
+    moments_signed_seriated  off-diagonal error 0.9964      0.00s
+    factor_rank1             off-diagonal error 0.7454      0.01s
+    factor_rank2             off-diagonal error 0.4408      0.01s
+  seed 2  bn1  C=32  mean |off-diagonal correlation| 0.331  negative off-diagonals 52%  negative couplings on the chain 48%  clamped w^2 31%  top-2 eigenvalue share 51%
+    store_full_matrix        off-diagonal error 0.0171      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6672      0.07s
+    published_mse_seriated   off-diagonal error 0.6736      0.06s
+    family_best_effort       off-diagonal error 0.6489      1.67s
+    moments_natural_order    off-diagonal error 0.9886      0.00s
+    moments_seriated         off-diagonal error 0.9817      0.00s
+    moments_signed_natural   off-diagonal error 1.0301      0.00s
+    moments_signed_seriated  off-diagonal error 1.0796      0.00s
+    factor_rank1             off-diagonal error 0.7967      0.00s
+    factor_rank2             off-diagonal error 0.5618      0.00s
+  seed 2  bn2  C=128  mean |off-diagonal correlation| 0.269  negative off-diagonals 48%  negative couplings on the chain 43%  clamped w^2 37%  top-2 eigenvalue share 39%
+    store_full_matrix        off-diagonal error 0.0217      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6637      0.14s
+    published_mse_seriated   off-diagonal error 0.6389      0.12s
+    family_best_effort       off-diagonal error 0.6312      3.41s
+    moments_natural_order    off-diagonal error 0.9938      0.00s
+    moments_seriated         off-diagonal error 0.9910      0.00s
+    moments_signed_natural   off-diagonal error 1.0100      0.00s
+    moments_signed_seriated  off-diagonal error 0.9901      0.00s
+    factor_rank1             off-diagonal error 0.7686      0.00s
+    factor_rank2             off-diagonal error 0.5849      0.00s
+  seed 2  bn3  C=256  mean |off-diagonal correlation| 0.332  negative off-diagonals 47%  negative couplings on the chain 39%  clamped w^2 23%  top-2 eigenvalue share 49%
+    store_full_matrix        off-diagonal error 0.0176      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6055      0.39s
+    published_mse_seriated   off-diagonal error 0.6261      0.43s
+    family_best_effort       off-diagonal error 0.6444     11.12s
+    moments_natural_order    off-diagonal error 0.9983      0.00s
+    moments_seriated         off-diagonal error 0.9904      0.00s
+    moments_signed_natural   off-diagonal error 1.0085      0.00s
+    moments_signed_seriated  off-diagonal error 1.0012      0.00s
+    factor_rank1             off-diagonal error 0.6457      0.01s
+    factor_rank2             off-diagonal error 0.4811      0.00s
+  seed 2  bn4  C=512  mean |off-diagonal correlation| 0.381  negative off-diagonals 45%  negative couplings on the chain 40%  clamped w^2 16%  top-2 eigenvalue share 60%
+    store_full_matrix        off-diagonal error 0.0160      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6769      0.61s
+    published_mse_seriated   off-diagonal error 0.5645      0.61s
+    family_best_effort       off-diagonal error 0.5511     15.18s
+    moments_natural_order    off-diagonal error 0.9988      0.00s
+    moments_seriated         off-diagonal error 0.9881      0.00s
+    moments_signed_natural   off-diagonal error 1.0042      0.00s
+    moments_signed_seriated  off-diagonal error 0.9902      0.00s
+    factor_rank1             off-diagonal error 0.7421      0.02s
+    factor_rank2             off-diagonal error 0.3531      0.01s
+
+  Channel correlation at every batch-norm layer, 3 seed(s), cifar10. Fitted on one half of the images, scored on the other.
+
+  arm                       off-diag err    s.d.  seconds
+  store_full_matrix               0.0208  0.0043     0.00
+  identity                        1.0000  0.0000     0.00
+  published_mse                   0.6700  0.0452     0.30
+  published_mse_seriated          0.6330  0.0543     0.30
+  family_best_effort              0.6246  0.0554     7.21
+  moments_natural_order           0.9953  0.0047     0.00
+  moments_seriated                0.9859  0.0086     0.00
+  moments_signed_natural          1.0090  0.0108     0.00
+  moments_signed_seriated         0.9897  0.0538     0.00
+  factor_rank1                    0.7482  0.0530     0.01
+  factor_rank2                    0.5268  0.0846     0.00
+
+  Off-diagonal error is relative Frobenius distance to the held-out empirical
+  correlation, so 0 is perfect and 1 is no better than predicting zero
+  correlation everywhere (lower is better). 'store_full_matrix' keeps the whole
+  fitting-split matrix, the O(C^2) memory this family exists to avoid, and is
+  the floor a structured fit is trying to approach.
+
+saved /home/tom/prjs/laplace_bayes/experiments/results/exp29_channel_correlation.csv
