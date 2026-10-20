@@ -181,6 +181,36 @@ def layer_stats(model, hooks, X, layers, device, batch=16):
     return out
 
 
+@torch.no_grad()
+def fit_report(lcms, stats, layers):
+    """What each fitted covariance actually imposes on the loop, per layer.
+
+    The inversion loss is a Gaussian negative log-likelihood, so two properties of the fit
+    govern its effect and neither is visible in a likelihood score. The **variance scale**
+    sets how hard the term pulls each feature toward its mean: a covariance whose variances
+    are far below the real feature variances is a strong pull, whatever its correlations.
+    The **adjacent correlation** is the off-diagonal structure the term is supposed to
+    impose. This prints both, with the real feature variance alongside, so a fit that scores
+    well on held-out likelihood but behaves badly as a prior can be told apart from one that
+    does not.
+    """
+    print(f"\n    {'layer':8}{'coord span':>12}{'adj corr':>10}{'fitted var':>12}"
+          f"{'real var':>12}{'ratio':>9}")
+    for l in layers:
+        m = lcms[l]
+        a, idx = torch.sort(m.a)
+        u = F.softplus(m.u_raw[idx]) + 1e-5
+        w = m.w[idx]
+        var = u + w * w
+        dt = (a[1:] - a[:-1]).clamp(min=0)
+        cov_adj = w[:-1] * w[1:] * torch.exp(-dt)
+        corr_adj = cov_adj / torch.sqrt(var[:-1] * var[1:]).clamp(min=1e-20)
+        real_var = stats[l]["s0"].clamp(min=0)
+        fv, rv = float(var.median()), float(real_var.median())
+        print(f"    {l:8}{float(a[-1] - a[0]):12.1f}{float(corr_adj.median()):10.4f}"
+              f"{fv:12.3e}{rv:12.3e}{fv / max(rv, 1e-30):9.3f}")
+
+
 def fit_frobenius(lcms, model, hooks, X, layers, dims, device, epochs, batch=32):
     """The authors' fit, with their learning rates and their objective."""
     _, frob_reduced = load_reference(ARGS.ref_dir)
@@ -450,6 +480,8 @@ def main():
                 fit_frobenius(lcms, model, hooks, X, layers, dims, device, ARGS.lcm_epochs)
             elif arm == "moments":
                 fit_moments(lcms, stats, layers)
+            if arm != "none":
+                fit_report(lcms, stats, layers)
             img = invert(model, hooks, bns, lcms, dims, ARGS.class_index, ARGS, device,
                          use_lcm=(arm != "none"))
             with torch.no_grad():
