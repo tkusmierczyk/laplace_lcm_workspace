@@ -2314,29 +2314,11 @@ Kept here so that "not done" is never mistaken for "does not work".
    the inverted network's confidence, Exp 27's correlation-profile error, and Frechet
    distance in a held-out ResNet-18 that was never inverted.
 
-   **Their published loop does not fit the 24 GB card its batch size implies.** The
-   log-likelihood holds a `(batch, dim, 2, 2)` float64 tensor per prefix-scan step under
-   autograd: 321 MB at `layer1`'s 200 704 dimensions and their batch of 50, about 18 steps,
-   roughly three such tensors alive per step. Summing the four layers' losses before the
-   backward pass keeps all four graphs at once, about 32 GB — an earlier note here said
-   11 GB, which was an underestimate, and the first full run was killed by it after 17
-   seconds with 22.7 GB allocated (job 541487). The fix recomputes each layer's
-   log-likelihood during the backward pass (`torch.utils.checkpoint`), which is exact
-   because the scan is deterministic and leaves one layer's graph live at a time. That
-   keeps the authors' batch size and all four layers; shrinking the batch instead would
-   weaken the feature mean/variance match that *every* arm depends on, including their own
-   `W_LCM = 0` ablation, and so would change the baseline rather than just the budget.
-
-   Recomputing alone was still not enough: a *single* layer's scan graph is about 20 GB at
-   their batch of 50, and a second run died at 22.9 GB inside the recompute (job 541566).
-   The batch is therefore also split *inside* the likelihood. That is exact rather than an
-   approximation, because their likelihood averages a per-image total over the batch and
-   every other quantity in it depends only on the parameters; `exp28_check_chunk_exact.py`
-   verifies it against their unmodified module, where the value agrees to 3e-14 and the
-   gradient with respect to the images — the only thing the loop optimises — to 2e-16.
-   Peak memory measured afterwards: **14.3 GB** on a 24 GB card. Measured speed: **12.4
-   seconds per optimisation step** with all four layers, so the authors' full 3400-step
-   schedule costs about 11.7 GPU-hours for each arm that uses the covariance.
+   **Done, all three arms** — see the Experiment 28 section above for the result, for the
+   two memory fixes their published settings needed on a 24 GB card, and for the measured
+   355× cost. One finding belongs in this register rather than only in the write-up: an
+   earlier note here estimated the memory at 11 GB, which was an underestimate by three
+   times, and the first full run was killed by it after 17 seconds (job 541487).
 2. **The quantitative claim of Tables 1–2** (+0.51 to +1.48 p.p. continual-learning
    accuracy on CIFAR-100 / Tiny-ImageNet, +0.12/+0.31 on ViT) has never been independently
    checked. Both datasets are already on the cluster (`cifar-100-python`,
