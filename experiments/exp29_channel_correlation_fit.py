@@ -260,6 +260,36 @@ def fit_moments_signed(R, order, clip=0.999):
     return lcm_correlation(dim, a, wv, dv)
 
 
+def structure_stats(R, order):
+    """Why a chain fit succeeds or fails here, measured rather than assumed.
+
+    Three things decide it. How much of the correlation is negative, which the positive
+    square root in the closed-form estimator cannot represent. How often that estimator's
+    implied `w^2` comes out negative and is clamped to zero, which is the collapse towards
+    the identity made countable. And how much of the eigenvalue mass sits in the leading
+    two directions, which says whether the structure is a chain of local couplings at all
+    or a few global modes that a low-rank model captures directly.
+    """
+    dim = R.shape[0]
+    off = ~torch.eye(dim, dtype=torch.bool)
+    s0, s1, s2 = bands_along(R, order)
+
+    tol = 1e-6 * float(s0.mean().clamp(min=1e-6))
+    w2 = torch.zeros(dim, dtype=torch.float64)
+    if dim > 2:
+        safe = torch.where(s2.abs() > tol, s2, torch.full_like(s2, tol))
+        w2[1:-1] = torch.where(s2.abs() > tol, s1[:-1] * s1[1:] / safe, torch.zeros_like(s2))
+        w2[0], w2[-1] = w2[1], w2[-2]
+
+    evals = torch.linalg.eigvalsh(R).clamp(min=0.0)
+    return {
+        "frac_offdiag_negative": float((R[off] < 0).double().mean()),
+        "frac_band1_negative": float((s1 < 0).double().mean()),
+        "frac_w2_negative": float((w2 < 0).double().mean()),
+        "eig_top2_share": float(evals.sort(descending=True).values[:2].sum() / evals.sum()),
+    }
+
+
 def fit_factor(R, rank):
     """Best rank-`rank` eigen-approximation, renormalised to unit diagonal.
 
@@ -303,12 +333,13 @@ def run_seed(args, seed, LCM, fit_fn):
         order = seriation_order(Rf)
         natural = torch.arange(C)
         mean_abs = float(Rf[~torch.eye(C, dtype=torch.bool)].abs().mean())
+        stats = structure_stats(Rf, order)
 
         def add(name, Rhat, secs, n_par):
             rows.append({"seed": seed, "layer": f"bn{li + 1}", "channels": C,
                          "arm": name, "offdiag_err": offdiag_error(Rhat, Rt),
                          "full_err": common.frob_rel(Rhat, Rt), "seconds": secs,
-                         "params_per_dim": n_par, "mean_abs_offdiag": mean_abs})
+                         "params_per_dim": n_par, "mean_abs_offdiag": mean_abs, **stats})
 
         add("store_full_matrix", Rf, 0.0, C)          # what the method replaces
         add("identity", torch.eye(C, dtype=torch.float64), 0.0, 0)
@@ -335,7 +366,11 @@ def run_seed(args, seed, LCM, fit_fn):
             add(f"factor_rank{r}", fit_factor(Rf, r), time.perf_counter() - t, r + 1)
 
         print(f"  seed {seed}  {rows[-1]['layer']}  C={C}  "
-              f"mean |off-diagonal correlation| {mean_abs:.3f}", flush=True)
+              f"mean |off-diagonal correlation| {mean_abs:.3f}  "
+              f"negative off-diagonals {stats['frac_offdiag_negative']:.0%}  "
+              f"negative couplings on the chain {stats['frac_band1_negative']:.0%}  "
+              f"clamped w^2 {stats['frac_w2_negative']:.0%}  "
+              f"top-2 eigenvalue share {stats['eig_top2_share']:.0%}", flush=True)
         for r in rows[-11:]:
             print(f"    {r['arm']:24} off-diagonal error {r['offdiag_err']:.4f}"
                   f"   {r['seconds']:7.2f}s", flush=True)
