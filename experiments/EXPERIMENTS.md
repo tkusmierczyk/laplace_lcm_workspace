@@ -2162,23 +2162,63 @@ network, the covariance term does not matter for the method's own application, a
 Experiment 27's sampling result has no downstream consequence. That would be the most
 important negative this project could report.
 
-### Status: the baseline arm is in, with a noise calibration; the two covariance arms are running
+### Result — all three arms, on the authors' full schedule
 
-The baseline arm ran **3 seeds** rather than 1, because it costs two minutes and the
-approved single-seed design gave no way to separate a small difference between arms from
-ordinary run-to-run variation. The metrics turn out to be very stable, which sets a clear
-bar for the arms still running:
+**The covariance term does change the images, and on the very structure it exists to impose
+it makes them worse.** The authors' own no-covariance ablation matches the real
+correlation-vs-distance curve *best* of the three arms. Their Frobenius-fitted covariance
+makes that match 2.5× worse, while improving image realism in the network that was never
+inverted. Our closed-form moment fit, dropped into their module so the loop is untouched, is
+worse on both. The pre-registered falsifier — three indistinguishable arms — is **not**
+triggered; the arms are far apart. But of the six arm-by-metric comparisons against the
+baseline, exactly one favours adding the covariance.
 
-| Score | Mean over 3 seeds | Run-to-run s.d. | Range |
-|---|---|---|---|
-| Confidence of the inverted network (higher better) | 99.93% | 0.01 p.p. | 99.92–99.94% |
-| Correlation-profile error (lower better) | 0.0250 | 0.0012 | 0.0237–0.0262 |
-| Fréchet distance, held-out network (lower better) | 310.68 | 1.44 | 309.59–312.31 |
+| Arm — only the covariance differs | Confidence of the inverted network (higher better) | Correlation-profile error (lower better) | Fréchet distance, held-out network (lower better) | Wall clock |
+|---|---|---|---|---|
+| Their covariance weight set to zero, **3 seeds** | 99.93% | **0.0250 ± 0.0012** | 310.68 ± 1.44 | 2.0 min |
+| Their Frobenius fit, 1 seed | 99.88% | 0.0623 — 30σ *worse* | **296.44** — 9.9σ *better* | 710 min |
+| Our closed-form moment fit, 1 seed | 99.89% | 0.2184 — 155σ *worse* | 368.67 — 40σ *worse* | 719 min |
 
-So a covariance arm needs to beat roughly 0.004 in profile error or 4.3 in Fréchet distance
-to be distinguishable at three standard deviations, even with one seed.
+Jobs 541797, 541779 and 541778 on the cluster's RTX 4090 queue; ImageNet class `n03457902`
+(greenhouse), all four ResNet-34 layers, their batch of 50, 3400 steps. "σ" throughout is
+the baseline's run-to-run standard deviation, measured by running that arm **3 seeds**
+rather than the approved 1: it costs two minutes, and without it there was no way to tell a
+small difference between arms from ordinary variation. That calibration is tight —
+confidence spans 99.92–99.94%, profile error 0.0237–0.0262, Fréchet distance 309.59–312.31 —
+so a one-seed arm had to move about 0.004 in profile error or 4.3 in Fréchet distance to be
+distinguishable at three standard deviations. Both covariance arms move far more than that.
 
-Two findings are already firm, before the covariance arms finish.
+Where the arms diverge, scored on the deepest layer's 7×7 map:
+
+| Distance | What it is | Real | No covariance | Their Frobenius fit | Our closed form |
+|---|---|---|---|---|---|
+| 1 | next pixel in the row | +0.722 | +0.717 | +0.746 | +0.913 |
+| 2 | two pixels along | +0.455 | +0.423 | +0.533 | +0.850 |
+| 4 | four pixels along | +0.269 | +0.212 | +0.370 | +0.750 |
+| 7 | the pixel directly below | +0.640 | +0.642 | +0.563 | +0.643 |
+| 49 | the next channel | +0.063 | +0.042 | +0.095 | +0.084 |
+
+Both covariance arms over-correlate neighbouring positions; ours grossly so, producing
+feature maps far smoother than real ones.
+
+**The mechanism is visible in the loss traces.** Their Frobenius-fitted covariance term
+hardly moves over the whole run: 3.87 down to 3.72 across 3000 steps, under 4%. Ours falls
+0.94 to 0.11, by 88%. So the arm that genuinely *succeeds* at the covariance objective is
+the arm whose features end up furthest from real ones and whose images score worst in the
+held-out network. In this loop the term behaves as a smoothness penalty, and satisfying it
+blurs the features rather than structuring them.
+
+**What this comparison does and does not establish.** It answers the question it was built
+for: replace the fit inside their loop, change nothing else. It does **not** show our closed
+form is the worse model of these features, because the two arms are not weight-matched.
+Their loop multiplies the covariance term by one fixed weight, and the two fits hand it
+terms of very different scale and gradient size — 3.87 against 0.94 at the first step — so
+our arm is effectively regularised much harder. Re-tuning that weight per arm costs about
+12 GPU-hours per point and is listed in the gap register, not run. Two further limits: one
+seed per covariance arm, with the noise floor borrowed from the baseline, which need not
+have the same spread; and one class and one architecture.
+
+Two further findings, independent of which fit is used.
 
 1. **The authors' zero-covariance baseline already reproduces the real correlation
    structure almost exactly**, which leaves the covariance term very little room.
@@ -2213,11 +2253,27 @@ Two findings are already firm, before the covariance arms finish.
    below it) along with the near-zero cross-channel correlation. The network supplies the
    structure the covariance model was brought in to impose, and supplies it better than the
    model's own samples do.
-2. **The covariance term costs about 350× the rest of the loop.** The whole 3400-step
-   schedule takes 2.0 minutes without it and 12.4 seconds *per step* with it, and peak
-   memory goes from 2.1 GB to 14.3 GB. Whatever the term buys has to be weighed against
-   that, and against the measured fact that the structure it is meant to impose is largely
-   there without it.
+2. **The covariance term costs about 355× the rest of the loop**, now measured end to end
+   rather than extrapolated. The whole 3400-step schedule takes **2.0 minutes** without it
+   and **710 and 719 minutes** with it, and peak memory goes from 2.1 GB to 14.3 GB.
+   Whatever the term buys has to be weighed against that, and against the measured fact
+   that the structure it is meant to impose is largely there without it.
+
+   Getting it to run at all took two fixes, because **the authors' published settings do not
+   fit the 24 GB card their own batch size implies**. Their log-likelihood keeps a
+   `(batch, dim, 2, 2)` float64 tensor per prefix-scan step under autograd — about 320 MB
+   per step at the first layer's 200 704 dimensions. All four layers' graphs alive at once
+   needs roughly 32 GB (job 541487 was killed at 22.7 GB) and one layer alone still needs
+   about 20 GB (job 541566, killed at 22.9 GB). Recomputing each layer's log-likelihood in
+   the backward pass, and then splitting the batch *inside* the likelihood, brings the peak
+   to 14.3 GB. The split is exact, not an approximation: their likelihood averages a
+   per-image total and every other quantity it computes depends only on the parameters, so
+   `exp28_check_chunk_exact.py` checks chunk sizes 1, 3, 4 and 7 against the whole batch and
+   finds the value agreeing to 3e-14 and the gradient with respect to the images — the only
+   thing the loop optimises — to 2e-16. The batch was deliberately *not* shrunk instead:
+   it feeds the per-layer mean and variance match that every arm relies on, including the
+   authors' zero-covariance ablation, so a smaller batch would have moved the baseline
+   rather than just the memory bill.
 
 ---
 ---
@@ -2243,7 +2299,7 @@ Kept here so that "not done" is never mistaken for "does not work".
 | Gap | State |
 |---|---|
 | Exp 25 (the fitting-rule comparison) at the paper's scale: `D` up to ~2e5 on CIFAR-100, 3 seeds | **Done** — job 541479 on trzmiel, 5 h 2 m, 10 CPUs, 48G; table and four readings above. Four submission faults were fixed to get there: a 16-CPU request against the `quick` QoS 10-CPU cap; `quota` missing on the compute node, which failed the setup job under `set -e` and so cancelled the `afterok` dependants; a 64G memory request that pended on Resources while 52 CPUs sat idle; and then 32G, which was enough for the laptop's 1200 images but not for the 3000 submitted, so job 541456 was OOM-killed partway through `D = 65536`. Now 48G, with the feature matrix preallocated instead of grown by `torch.cat` |
-| Exp 28 (the image-inversion comparison) at the authors' full schedule | **Running**, approved after the budget was measured: jobs 541778 (our closed-form fit), 541779 (their Frobenius fit) and 541780 (their no-covariance ablation), one arm each so every job fits the one-day queue limit, 3400 steps, all four layers, their batch of 50, ~24 GPU-hours in total for one seed |
+| Exp 28 (the image-inversion comparison) at the authors' full schedule | **Done** — jobs 541778 (our closed-form fit, 11 h 59 m), 541779 (their Frobenius fit, 11 h 50 m) and 541797 (their no-covariance ablation, 3 seeds, 6 m), one arm per job so each fits the one-day queue limit, 3400 steps, all four layers, their batch of 50, 24.0 GPU-hours in total. Table and three readings above. The two covariance arms shared node c12, which slowed them from the 12.4 s/step measured solo to about 14 s/step; both still finished inside the limit |
 | Exp 25 locally at `D` up to 65536, 3 seeds | **Done**, 3 seeds — table above; verified against dense Cholesky |
 | Exp 27 on the cluster: CIFAR-100, 5 seeds, `D` to 65536 | **Done** (job 540753, 1 h 29 m) — table above; the moment fit leads by ~8σ |
 | ~~Library `lowrank` baseline~~ | **Closed, negatively** — see the table above. Not an install problem: upstream pins `asdfghjkl==0.1a4`, which renamed its module to `asdl` and dropped the four functions `AsdfghjklHessian` imports. Unblocking it means writing `eig_lowrank` ourselves |
