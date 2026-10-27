@@ -1420,7 +1420,10 @@ off-diagonals are what matter. That remains the central open problem.
 
 KFAC x LCM had never been run. What existed was the algebra (the one-factor eigen
 reduction, verified to machine precision) and a fit-only measurement of how chain-like
-real KFAC factors are. No posterior had ever been built from it. It now lives in the
+real KFAC factors are. No posterior had ever been built from it. That algebra — the
+reduction, its proof, the closure argument and the trace-balanced damping constant — is
+written out in `KFAC_LCM_THEORY.md` at the repository root, which carries a header saying
+which of its claims this experiment and Experiment 21 went on to confirm or falsify. It now lives in the
 library, so it is reached the same way as every baseline:
 
 ```python
