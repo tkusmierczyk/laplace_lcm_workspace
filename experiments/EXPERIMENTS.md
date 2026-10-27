@@ -2512,6 +2512,66 @@ within well under a seed's spread (their rule 0.6700 against 0.6677), but not bi
 because the convolutions are non-deterministic.
 
 ---
+
+## Experiment 30 — does the closed-form fit need to be told the ordering?
+
+`exp30_ordering_dependence.py` · `results/exp30_ordering_dependence.csv`
+
+**Why this was run.** The closed-form moment fit identifies the chain from three bands of
+the empirical second moment, and those bands are the chain's neighbours only if the
+coordinates are already in chain order. So `order` is an *input* to it, never something it
+discovers — unlike the published method, which learns the coordinate and sorts by it. That
+makes two things worth measuring, on data drawn from a known chain where the true ordering is
+available as a reference no real dataset provides: how badly a wrong order hurts, and whether
+spectral seriation can stand in for the true one.
+
+Held-out negative log-likelihood, lower is better, 3 seeds. "Order recovery" is |correlation|
+between the seriated order and the true one, so 1.0 is perfect and 0 is chance. The diagonal
+column is the no-structure floor: a fit that reaches it has found nothing.
+
+| dim | adjacent correlation | order recovery | true order | seriated | random | diagonal |
+|---|---|---|---|---|---|---|
+| 256 | 0.575 | **0.999** | 361.7 | 370.4 | 434.3 | 437.0 |
+| 256 | 0.483 | 0.954 | 396.4 | 425.8 | 436.8 | 437.0 |
+| 256 | 0.271 | 0.270 | 426.8 | 436.6 | 436.9 | 437.0 |
+| 1024 | 0.575 | 0.690 | 1446.3 | 1674.5 | 1748.4 | 1750.2 |
+| 1024 | 0.484 | 0.377 | 1586.7 | 1745.7 | 1750.3 | 1750.5 |
+| 1024 | 0.272 | 0.056 | 1709.7 | 1750.3 | 1750.5 | 1750.5 |
+| 2048 | 0.574 | 0.531 | 2892.3 | 3441.7 | 3497.6 | 3498.8 |
+| 2048 | 0.483 | 0.167 | 3172.9 | 3495.7 | 3499.4 | 3499.6 |
+| 2048 | 0.271 | 0.019 | 3418.5 | 3499.7 | 3499.8 | 3499.8 |
+
+Three readings.
+
+1. **A wrong ordering destroys the fit completely, with no graceful degradation.** A random
+   permutation lands within 1.3 nats of the independent-coordinates floor at every setting.
+   The bands are no longer neighbours, the implied amplitudes go to zero, and what comes out
+   is a diagonal. So the estimator's advantage is strictly conditional on being handed a good
+   order.
+2. **Seriation recovers the ordering, but only at small dimension and strong coupling.** At
+   256 dimensions with adjacent correlation 0.575 it is essentially exact (0.999) and the fit
+   lands near the true-order one (370.4 against 361.7, floor 437.0). Recovery then falls off
+   in *both* directions — to 0.531 at 2048 dimensions and to 0.019 once adjacent correlation
+   drops to 0.27 — and the fit degrades with it, reaching the floor in the worst corner.
+3. **This localises an earlier result rather than contradicting it.** Experiment 20 found
+   seriation recovers Tecator's ordering exactly; Tecator is ~100 wavelengths with strong
+   smooth correlation, which is the easy corner of this table. The limitation is scaling, not
+   seriation as such, and it matters because the dimensions this method targets (10³–10⁶) are
+   well past where recovery held up here.
+
+**What this changes.** Experiment 25's fitting advantage is unaffected, because there both
+arms use the natural flattened index — the published initialisation `linspace(-1, 1, dim)`
+assigns coordinate *i* in proportion to *i*, so it encodes that same order — and the
+difference between them is the *spacing*. But it bounds what may be claimed: the closed form
+replaces the published method's **parameter fitting**, not its **ordering discovery**, and
+where no natural order exists we have no demonstrated way to supply one at scale.
+
+**Limits.** Synthetic data from the model's own family, which is the only setting with a known
+true order, so this measures the estimator's sensitivity rather than performance on real
+features. Evenly spaced coordinates and randomised amplitudes; amplitude variation may itself
+hamper seriation, which is untested here.
+
+---
 ---
 
 ## Gap register

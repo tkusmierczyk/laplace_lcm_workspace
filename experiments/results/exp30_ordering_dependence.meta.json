@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-10-27T16:01:23",
+  "experiments_git": {
+    "commit": "84243ad",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "ec8628c",
+    "dirty": false
+  },
+  "library_path": "/home/tom/prjs/laplace_bayes/Laplace",
+  "host": "Dell-G15-5530",
+  "slurm_job_id": null,
+  "argv": [
+    "experiments/exp30_ordering_dependence.py"
+  ],
+  "python": "3.13.5",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.2",
+  "device": "cpu",
+  "gpu": null,
+  "threads": 24,
+  "dtype": "torch.float32",
+  "config": {
+    "dims": "256,1024,2048",
+    "gaps": "0.05,0.223,0.8",
+    "n_samples": 4000,
+    "seeds": 3,
+    "tag": "exp30_ordering_dependence"
+  }
+}
