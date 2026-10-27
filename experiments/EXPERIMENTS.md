@@ -2849,11 +2849,20 @@ pre-registered predictions:
 ## Reproduction
 
 **Reading the provenance of a cluster result.** Every result file has a `.meta.json` beside it
-recording the commit it ran at. For runs executed on the GMUM gateway — the Exp 25 and Exp 28
-results — that commit belongs to the **mirror clone** on the cluster, not to this repository,
-so the hash will not resolve here. Those are `d3918ee`, `e357329` and `6ae4539`. The metadata
-now records each repository's `origin` alongside the hash, so later runs say where to resolve
-them; the seven files written before that change do not.
+recording the commit it ran at. Runs executed on the GMUM gateway record the commit of the
+**mirror clone** there (`~/laplace_lcm`, branch `main`, no remote), which is a separate history
+and will not resolve in this repository. Seven files are affected — the Exp 25 and Exp 28
+results. Use this mapping; it is verified, not inferred, by comparing the md5 of
+`exp28_model_inversion.py` at each pair, which is identical in all three cases:
+
+| Mirror commit, as recorded in `.meta.json` | Equivalent commit here | What it is |
+|---|---|---|
+| `d3918ee` | `c1e1ea6` | splitting the batch inside the covariance term |
+| `e357329` | `5dd808e` | the selectable scored layer |
+| `6ae4539` | `a9072e0` | the fit diagnostic |
+
+Later runs need no such table: the metadata now records each repository's `origin` alongside
+the hash, so a reader can tell which history a commit belongs to.
 
 ```bash
 python experiments/run_all.py          # all 15 experiments, writes results/*.csv
