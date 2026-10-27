@@ -294,6 +294,27 @@ measures. What is left is a diagonal with variances $3$ to $16\times$ the real f
 variances. The moment fit matches those variances exactly, by construction, and imposes real
 neighbour correlation of $0.44$ to $0.85$.
 
+\paragraph{A second, more direct cause: their optimiser decays the coordinate.} Their
+inversion script sets the parameter groups as
+
+\begin{lstlisting}[style=py]
+# reference/REMIX/efficient_inversion/resnet34/synthetic_samples.py:117-120
+optim.Adam([{'params': lcms[l].u_raw, 'lr': 1e-2},
+            {'params': lcms[l].w,     'lr': 1e-2},
+            {'params': lcms[l].a,     'lr': 0.12, 'weight_decay': 1e-5}],
+           betas=(0.9, 0.999))
+\end{lstlisting}
+
+\noindent
+Weight decay on a \emph{coordinate} is a pull toward the origin --- that is, toward a collapsed
+span and an all-ones kernel. The two causes compose: at span $2$ and $N = 200\,704$ the kernel
+is within $10^{-5}$ of all-ones, so the data gradient on $a$ is negligible, and the decay term
+is then the only consistent signal acting on it. Over 50 epochs at learning rate $0.12$ that is
+ample to drive the span to zero. Tellingly, their \emph{likelihood} script --- the one producing
+their Figure~4 --- uses the same learning rate for $a$ with \textbf{no} weight decay
+(\code{calculate\_likelihood.py:165}). The decay appears only in the image-generation path,
+which is exactly where we measured the collapse.
+
 \paragraph{It shows nothing about their ordering claim.} Both arms used the natural index. Note
 also the frozen-coordinate row of Table~\ref{tab:exp25}: fixing the coordinates at equal
 spacing uses one parameter less and beats \emph{learning} them at both large widths. On that
@@ -368,9 +389,20 @@ coordinates and smooths the feature map. Better density estimation, stronger smo
 \section{How this could improve the published method}
 \label{sec:improve}
 
-All five proposals below are \textbf{untested}. They are ordered cheapest first, and each says
+All six proposals below are \textbf{untested}. They are ordered cheapest first, and each says
 what would falsify it. They apply to the flattened-feature configuration; see the caution in
 Section~\ref{sec:caution} about the channel configuration.
+
+\subsection{Remove the weight decay on the coordinate --- one character}
+
+Their inversion script decays $a$ toward zero (\code{synthetic\_samples.py:119},
+\code{weight\_decay: 1e-5}), which is a pull toward exactly the collapsed, all-ones
+configuration measured in Table~\ref{tab:span}. Their own likelihood script omits it. Deleting
+it from the inversion path costs nothing and makes the two consistent.
+
+\emph{Falsified if} the span still collapses without it --- which would mean the vanishing
+data gradient at span $2$ suffices on its own, and the next proposal is the real fix. Either
+outcome identifies the cause, which is why this is the first thing to run.
 
 \subsection{Scale the coordinate initialisation with dimension --- one line}
 
@@ -486,6 +518,107 @@ doing something useful: collapsing to a loose, over-wide diagonal that acts as a
 regulariser. If that is what drives the reported gains, then fixing the fit removes the
 mechanism. Establishing which is true needs the one experiment nobody has run --- turning the
 covariance term off and reading the accuracy.
+
+\section{Protocols}
+\label{sec:protocols}
+
+Every number quoted above comes from one of the three experiments below, each given in enough
+detail to re-run without reading the code.
+
+\subsection{The fitting comparison at scale (Table~\ref{tab:exp25})}
+
+\paragraph{Data.} CIFAR-100, 3000 images from the training split with a per-seed shuffle.
+Images are used only to produce features; labels only to train the network.
+
+\paragraph{Network.} A deliberately stride-1 convolutional stack, so the flattened maps reach
+the paper's dimensions: three blocks of
+\code{Conv2d(3$\times$3, padding 1)} $\to$ \code{BatchNorm2d} $\to$ \code{ReLU} with 16, 64 and
+192 channels, then global average pooling into a linear head. \textbf{The network is trained},
+not random --- 4 epochs of Adam, learning rate $2\mathrm{e}{-3}$, batch 64, cross-entropy.
+
+\paragraph{Features.} The flattened output of each block, so $D = C \times 32 \times 32$ gives
+$16\,384$, $65\,536$ and $196\,608$. Split $80/20$ into fitting and held-out sets, centred on
+the \emph{fitting} mean.
+
+\paragraph{Cleaning, applied identically to every arm.} ReLU maps contain near-dead units whose
+held-out cost is decided purely by whatever floor each family clamps at --- at $D = 65\,536$,
+seven units have variance below $10^{-6}\times$ the median and one is exactly zero. Those
+dimensions are dropped (variance below $10^{-6} \times$ median), and every family is then given
+the \emph{same} explicit variance floor of $10^{-4} \times$ median. Before this was fixed the
+diagonal scored $35.8$ nats/dim better purely on floor choice.
+
+\paragraph{Arms.}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Arm & Params & How it is fitted \\
+\midrule
+Diagonal & $D$ & per-dimension variance of the fitting split, clamped \\
+Factor analysis, rank 2 / 3 & $(r{+}1)D$ & EM, 40 iterations, randomised-SVD init \\
+Chain, Frobenius (paper's rule) & $3D$ & Adam, 300 steps, lr $5\mathrm{e}{-2}$, minibatch 256 \\
+Chain, Frobenius, $a$ frozen & $2D$ & identical, $a$ fixed at equal spacing \\
+Chain, exact maximum likelihood & $3D$ & Adam on $(a,w,u)$, 100 steps, lr $5\mathrm{e}{-2}$ \\
+\textbf{Chain, moment matching} & $3D$ & closed form, one pass, no optimiser \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The exact-likelihood arm is skipped above $D = 65\,536$: it needs ${\sim}1150$\,s even at
+$16\,384$.
+
+\paragraph{Metric.} Held-out Gaussian negative log-likelihood, summed over dimensions, averaged
+over held-out images, divided by $D$ --- hence \emph{nats per dimension}, lower better.
+Negative values are legitimate differential entropies, and are why the result was
+cross-checked against a dense Cholesky.
+
+\paragraph{Seeds and cost.} 3 seeds, re-seeding the network initialisation, the image sample and
+the fitting. About 5\,h on one CPU node of the GMUM cluster, 10 cores, 48\,GB, float64
+throughout.
+
+\subsection{What each fit imposes, per layer (Table~\ref{tab:span})}
+
+\paragraph{Data.} 256 real ImageNet images of one class (\code{n03457902}, greenhouse) at
+$224 \times 224$.
+
+\paragraph{Network.} Torchvision ResNet-34 with ImageNet weights, frozen, in eval mode.
+Features are taken at the outputs of \code{layer1}--\code{layer4} and flattened, giving $D$ up
+to $200\,704$.
+
+\paragraph{Fitting.} Their objective with \textbf{their own optimiser settings}, imported from
+their clone rather than reimplemented: Adam with per-group learning rates \code{u\_raw}
+$10^{-2}$, \code{w} $10^{-2}$, \code{a} $0.12$ with \code{weight\_decay} $10^{-5}$,
+\code{betas} $(0.9, 0.999)$, 50 epochs over the 256 images at batch 32. The moment arm instead
+fits in closed form from the same features.
+
+\paragraph{What is reported.} The span of the fitted coordinates, the median correlation the
+fit implies between adjacent coordinates, and the fitted variance divided by the real feature
+variance --- none of which is visible in the loss curve.
+
+\paragraph{Cost.} Minutes: the inversion loop is truncated, and the fit precedes it and does
+not depend on it. Cluster job 542802, one 24\,GB card.
+
+\subsection{Ordering dependence (Table~\ref{tab:order})}
+
+\paragraph{Data.} Synthetic, drawn from a known chain in the family --- the only setting where
+a true ordering exists to compare against. Coordinates evenly spaced at gap $g$, amplitudes
+drawn uniformly from $[0.8, 1.3]$, 4000 samples for fitting and 4000 held out.
+
+\paragraph{Sweep.} Dimension $256/1024/2048$ crossed with gap $0.05/0.223/0.8$, giving adjacent
+correlations of roughly $0.58/0.48/0.27$. 3 seeds each.
+
+\paragraph{Arms.} The same closed-form fit given four orderings: the true one; a spectral
+seriation computed from the data alone (Fiedler vector of the Laplacian of the absolute
+sample-correlation graph); a uniform random permutation; and an independent-coordinates
+Gaussian as the no-structure floor.
+
+\paragraph{Metric.} Held-out Gaussian negative log-likelihood summed over dimensions and
+averaged over images --- \emph{not} divided by $D$ here, so columns are comparable only within
+a row. ``Order recovery'' is the absolute Pearson correlation between the seriated order and
+the true index, measuring monotonicity up to reflection, which is what the chain needs.
+
+\paragraph{Cost.} About 3 minutes on CPU.
 
 \section{Reproducing what is quoted here}
 

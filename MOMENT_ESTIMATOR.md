@@ -224,6 +224,28 @@ measures. What is left is a diagonal with variances 3 to 16× the real feature v
 moment fit matches those variances exactly, by construction, and imposes real neighbour
 correlation of 0.44 to 0.85.
 
+**And there is a second, more direct cause: their optimiser decays the coordinate toward
+zero.** Their inversion script sets the parameter groups as
+
+```python
+# reference/REMIX/efficient_inversion/resnet34/synthetic_samples.py:117-120
+optim.Adam([{'params': lcms[l].u_raw, 'lr': 1e-2},
+            {'params': lcms[l].w,     'lr': 1e-2},
+            {'params': lcms[l].a,     'lr': 0.12, 'weight_decay': 1e-5}],
+           betas=(0.9, 0.999))
+```
+
+Weight decay on a *coordinate* is a pull toward the origin — that is, toward a collapsed span
+and an all-ones kernel. The two causes compose: at span 2 and `N` = 200 704 the kernel is
+within `1e-5` of all-ones, so the data gradient on `a` is negligible, and the decay term is
+then the only consistent signal acting on it. Over 50 epochs at learning rate 0.12 that is
+ample to drive the span to zero.
+
+Tellingly, their *likelihood* script — the one producing their Figure 4 — uses the same
+learning rate for `a` with **no weight decay** (`calculate_likelihood.py:165`). The decay
+appears only in the image-generation path, which is exactly the path where we measured the
+collapse.
+
 **It does not show anything about their ordering claim.** Both arms used the natural index.
 Note also the frozen-coordinate row above: fixing the coordinates at equal spacing uses one
 parameter less and beats *learning* them at both large widths. On this evidence the learned
@@ -287,11 +309,22 @@ feature map. Better density estimation, stronger smoothing prior.
 
 ## 6. How this could improve the published method
 
-All five proposals below are **untested**. They are ordered cheapest first, and each says what
+All six proposals below are **untested**. They are ordered cheapest first, and each says what
 would falsify it. They apply to the flattened-feature configuration; see the caution at the end
 about the channel configuration.
 
-### 6a. Scale the coordinate initialisation with dimension — one line
+### 6a. Remove the weight decay on the coordinate — one character
+
+Their inversion script decays `a` toward zero (`synthetic_samples.py:119`,
+`weight_decay: 1e-5`), which is a pull toward exactly the collapsed, all-ones configuration we
+measured. Their own likelihood script omits it. Deleting it from the inversion path costs
+nothing and makes the two consistent.
+
+*Falsified if* the span still collapses without it — which would mean the vanishing data
+gradient at span 2 is sufficient on its own, and 6b below is the real fix. Either outcome
+identifies the cause, which is why this is the first thing to run.
+
+### 6b. Scale the coordinate initialisation with dimension — one line
 
 The span of 2 is dimension-independent, and the required span grows with `N`. Replace
 `linspace(-1, 1, dim)` with a span set from the data: the mean absolute band-1 correlation
@@ -303,7 +336,7 @@ A caution from our own data: over **channels** we tried a span of `dim` and the 
 substantially worse, because channel covariance is broad rather than local. The right span is
 whatever the data implies, not simply a large one.
 
-### 6b. Warm-start their gradient fit from the closed form
+### 6c. Warm-start their gradient fit from the closed form
 
 Run moment matching, then run their Frobenius descent from the result. This keeps their
 objective and their ability to refine beyond what three bands identify — longer-range
@@ -315,7 +348,7 @@ outcome would be informative in itself: it would mean the Frobenius objective's 
 genuinely elsewhere, and the gap in the table above is a disagreement between objectives rather
 than an optimisation failure.
 
-### 6c. Alternate closed-form blocks with gradient steps on the ordering only
+### 6d. Alternate closed-form blocks with gradient steps on the ordering only
 
 This is the proposal the structure of the problem most directly supports. The parameters split
 by what each method is good at:
@@ -364,7 +397,7 @@ is worth a great deal when you have it, and our gradient fits have never recover
 from an uninformed start — but all of those fits also began at the wrong span, which this
 scheme removes. That confound is exactly what makes the experiment worth running.
 
-### 6d. Use the closed-form span as a free diagnostic
+### 6e. Use the closed-form span as a free diagnostic
 
 Their fit's collapse is invisible in the loss curve, which falls smoothly and looks converged
 while the model degenerates to a diagonal. Computing the moment-matched span costs one pass
@@ -372,7 +405,7 @@ and gives a reference: if the fitted span is orders of magnitude smaller, the fi
 collapsed. This catches the failure without changing their method at all, and is the one
 proposal here with essentially no downside.
 
-### 6e. For channels, address the sign pattern rather than the fitting
+### 6f. For channels, address the sign pattern rather than the fitting
 
 Over channels the limitation is representational, not numerical: the achievable sign pattern is
 `sign(wᵢwⱼ)`, which is rank-1 — a two-camp split — while almost half the real off-diagonal
@@ -390,7 +423,7 @@ conclusion over channels is that fitting is not where the problem is.
 **Improving the fit may not improve the paper's results.** Section 5 records that a
 better-fitting covariance made their inversion output measurably worse, because the fitted
 covariance enters their loss as a penalty on the generated features, and a correctly
-correlated penalty over-smooths. Anyone pursuing 6a–6c should therefore measure the downstream
+correlated penalty over-smooths. Anyone pursuing 6a–6d should therefore measure the downstream
 metric, not only the fit quality, and should expect the covariance weight to need re-tuning:
 their loop multiplies this term by a single fixed weight, and a better-fitted covariance hands
 it a term of quite different scale and curvature.
@@ -403,7 +436,92 @@ turning their covariance term off and reading the accuracy.
 
 ---
 
-## 7. Reproducing what is quoted here
+## 7. Protocols
+
+Every number quoted above comes from one of the three experiments below. Each is given in
+enough detail to re-run without reading the code.
+
+### 7a. The fitting comparison at scale (Table in §3)
+
+**Data.** CIFAR-100, 3000 images drawn from the training split with a per-seed shuffle. Images
+are used only to produce features; labels are used only to train the network.
+
+**Network.** A deliberately stride-1 convolutional stack so the flattened maps reach the
+paper's dimensions — three blocks of `Conv2d(3×3, padding 1) → BatchNorm2d → ReLU` with
+16, 64 and 192 channels, then global average pooling into a linear head. **The network is
+trained**, not random: 4 epochs of Adam, learning rate 2e-3, batch 64, cross-entropy.
+
+**Features.** The flattened output of each block, so `D = C × 32 × 32` gives **16 384**,
+**65 536** and **196 608**. Split 80/20 into fitting and held-out sets, centred on the
+*fitting* mean.
+
+**Cleaning, applied identically to every arm.** ReLU maps contain near-dead units whose
+held-out cost is decided purely by whatever floor each family happens to clamp at — at
+`D` = 65 536, seven units have variance below 1e-6 × the median and one is exactly zero. Those
+dimensions are dropped (`variance < 1e-6 × median`), and every family is then given the *same*
+explicit variance floor of `1e-4 × median`. Before this was fixed the diagonal scored 35.8
+nats/dim better purely on floor choice.
+
+**Arms.**
+
+| Arm | Parameters | How it is fitted |
+|---|---|---|
+| Diagonal | `D` | per-dimension variance of the fitting split, clamped at the shared floor |
+| Factor analysis, rank 2 / 3 | `(r+1)D` | EM, 40 iterations, randomised-SVD initialisation; never forms the `D×D` matrix |
+| Chain, Frobenius (the paper's rule) | `3D` | `fit_frobenius`: Adam, 300 steps, lr 5e-2, minibatch 256 |
+| Chain, Frobenius, coordinates frozen | `2D` | identical, with `a.requires_grad_(False)` at equal spacing |
+| Chain, exact maximum likelihood | `3D` | Adam on `(a, w, u_raw)`, 100 steps, lr 5e-2, minibatch 256, loss = exact Gaussian NLL, amplitude-scale auto-init first; skipped above `D` = 65 536 as it needs ~1150 s even at 16 384 |
+| **Chain, moment matching** | `3D` | closed form, one pass, no optimiser |
+
+**Metric.** Held-out Gaussian negative log-likelihood, summed over dimensions, averaged over
+held-out images, divided by `D` — hence *nats per dimension*, lower better. Negative values are
+legitimate differential entropies, and are the reason the result was independently
+cross-checked against a dense Cholesky.
+
+**Seeds and cost.** 3 seeds (network initialisation, image sample and fitting all re-seeded).
+About 5 h on one CPU node of the GMUM cluster, 10 cores, 48 GB; float64 throughout.
+
+### 7b. What each fit imposes, per layer (Table in §3)
+
+**Data.** 256 real ImageNet images of one class — `n03457902`, greenhouse — at 224×224.
+
+**Network.** Torchvision ResNet-34 with ImageNet weights, frozen and in eval mode. Features
+are taken at the outputs of `layer1`–`layer4` and flattened, giving `D` up to 200 704.
+
+**Fitting.** Their objective and **their own optimiser settings**, imported from their clone
+rather than reimplemented: Adam with per-group learning rates `u_raw` 1e-2, `w` 1e-2, `a` 0.12
+with `weight_decay` 1e-5, `betas` (0.9, 0.999), 50 epochs over the 256 images at batch 32. The
+moment arm instead fits in closed form from the same features.
+
+**What is reported.** The span of the fitted coordinates, the median correlation the fit
+implies between adjacent coordinates, and the fitted variance divided by the real feature
+variance — none of which is visible in the loss curve.
+
+**Cost.** Minutes, because the inversion loop is truncated; the fit precedes it and does not
+depend on it. Cluster job 542802, one 24 GB card.
+
+### 7c. Ordering dependence (Table in §4)
+
+**Data.** Synthetic, drawn from a known chain in the family — the only setting where a true
+ordering exists to compare against. Coordinates evenly spaced at gap `g`, amplitudes drawn
+uniformly from `[0.8, 1.3]`, 4000 samples for fitting and 4000 held out.
+
+**Sweep.** Dimension 256 / 1024 / 2048 × gap 0.05 / 0.223 / 0.8, which yields adjacent
+correlations of roughly 0.58 / 0.48 / 0.27. 3 seeds each.
+
+**Arms.** The same closed-form fit given four different orderings: the true one; a spectral
+seriation computed from the data alone (Fiedler vector of the Laplacian of the absolute
+sample-correlation graph); a uniform random permutation; and an independent-coordinates
+Gaussian as the no-structure floor.
+
+**Metric.** Held-out Gaussian negative log-likelihood summed over dimensions and averaged over
+images — *not* divided by `D` here, so the columns are comparable only within a row. "Order
+recovery" is the absolute Pearson correlation between the seriated order and the true index,
+which measures monotonicity up to reflection, since that is what the chain needs.
+
+**Cost.** About 3 minutes on CPU.
+
+## 8. Reproducing what is quoted here
 
 ```bash
 # fitting comparison at the paper's scale (cluster, ~5 h on one CPU node)
