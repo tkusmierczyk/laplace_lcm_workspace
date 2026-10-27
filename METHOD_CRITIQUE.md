@@ -48,7 +48,7 @@ easy to confuse. They are distinguished by one question:
 | | Problem 1, over channels | Problem 2, over flattened maps |
 |---|---|---|
 | Is the target the family's shape? | **No** — dense, ~rank-2, half the entries negative | **Yes** — strongly local, neighbour correlation 0.80–0.94 against 0.13 for random pairs |
-| Does a good fit exist in the family? | **Not one we can find.** Four fitting routes and two initialisations all land at 0.62–1.00, against a 0.02 floor | **Yes, and we exhibit it.** A closed-form estimator in the same family reaches 0.13 nats/dim where their rule reaches 0.60 |
+| Does a good fit exist in the family? | **Not one we can find.** Four fitting routes and two initialisations all land at 0.62–1.00, against a 0.02 floor | **Yes, and we exhibit it** — given the ordering. A closed-form estimator reaches 0.13 nats/dim where their rule reaches 0.60, both using the natural flattened index |
 | So the failure is | **representational** — the family is too small | **optimisation** — the family is right, the search fails |
 | What would fix it | a different family; a rank-2 factor model already does better | better fitting; the closed form already does better |
 
@@ -378,6 +378,7 @@ nothing we measured contradicts.
 | "Exact likelihood lands close to their rule" | **Corrected** — 0.6811 is slightly worse than 0.6000 |
 | One root cause behind both problems | **Retracted** — they are opposites: collapsing toward all-ones is family-appropriate over channels and a fitting failure over feature maps |
 | "18–20× faster to fit" | **Corrected** to 17.5–20× |
+| "A better fit exists in the family", unqualified | **Scoped** — it exists *given an ordering*. The closed form takes the ordering as an input and returns a diagonal if given a wrong one, so Problem 2 concerns their coordinate *spacing*, not their claim to discover an ordering. Both arms used the natural flattened index, which their own `linspace(-1, 1, dim)` initialisation also encodes (Exp 30) |
 
 ## Everything referenced here
 
