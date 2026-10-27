@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-10-27T14:18:46",
+  "experiments_git": {
+    "commit": "79cb2d9",
+    "dirty": true
+  },
+  "library_git": {
+    "commit": "ec8628c",
+    "dirty": false
+  },
+  "library_path": "/home/tom/prjs/laplace_bayes/Laplace",
+  "host": "Dell-G15-5530",
+  "slurm_job_id": null,
+  "argv": [
+    "experiments/exp29_channel_correlation_fit.py",
+    "--channels",
+    "32,128,256,512",
+    "--n-images",
+    "4000",
+    "--epochs",
+    "4",
+    "--fit-epochs",
+    "200",
+    "--best-effort-epochs",
+    "5000",
+    "--seeds",
+    "3",
+    "--tag",
+    "exp29_span_check"
+  ],
+  "python": "3.13.5",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.2",
+  "device": "cpu",
+  "gpu": null,
+  "threads": 24,
+  "dtype": "torch.float64",
+  "config": {
+    "ref_dir": "reference/REMIX",
+    "data_root": "/home/tom/data",
+    "dataset": "cifar10",
+    "channels": "32,128,256,512",
+    "n_images": 4000,
+    "fit_frac": 0.5,
+    "epochs": 4,
+    "fit_epochs": 200,
+    "best_effort_epochs": 5000,
+    "batch": 64,
+    "seeds": 3,
+    "tag": "exp29_span_check"
+  }
+}

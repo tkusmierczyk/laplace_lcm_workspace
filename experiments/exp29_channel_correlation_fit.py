@@ -161,18 +161,25 @@ def lcm_correlation(dim, a, w, d):
     return to_correlation(torch.diag(d) + K * torch.outer(w, w))
 
 
-def fit_published(LCM, fit_fn, R, order=None, epochs=200, lr=0.01):
+def fit_published(LCM, fit_fn, R, order=None, epochs=200, lr=0.01, span=2.0):
     """Their rule: Adam on mean-squared error between correlations.
 
     With `order`, only the initialisation of the coordinates changes -- the loss, the
     optimiser, the learning rate and the 200 epochs are theirs untouched -- so the
     comparison isolates the ordering from the fitting objective.
+
+    `span` is the width the coordinates are spread over at initialisation. Theirs is
+    `linspace(-1, 1, dim)`, i.e. 2 whatever the dimension, which puts adjacent coordinates
+    at correlation `exp(-2/(dim-1))` -- 0.996 at 512 channels. Expressing decay over a few
+    neighbours instead needs a span of order `dim`, so the default start is several orders
+    of magnitude away from any structured solution. Passing `span=dim` tests whether what
+    looks like the family's ceiling is really a property of that initialisation.
     """
     dim = R.shape[0]
     mod = LCM(dim).double()
     if order is not None:
         pos = torch.empty(dim, dtype=torch.float64)
-        pos[order] = torch.linspace(-1.0, 1.0, dim, dtype=torch.float64)
+        pos[order] = torch.linspace(-span / 2, span / 2, dim, dtype=torch.float64)
         with torch.no_grad():
             mod.a.copy_(pos)
     fit_fn(mod, R, epochs=epochs, lr=lr)
@@ -180,7 +187,7 @@ def fit_published(LCM, fit_fn, R, order=None, epochs=200, lr=0.01):
         return mod.correlation().double()
 
 
-def fit_family_best_effort(LCM, R, order, epochs=5000, lr=0.05):
+def fit_family_best_effort(LCM, R, order, epochs=5000, lr=0.05, span=2.0):
     """The same family and the same loss, fitted far past the authors' budget.
 
     This arm exists to stop us mistaking one thing for another. If their 200-epoch rule
@@ -192,7 +199,7 @@ def fit_family_best_effort(LCM, R, order, epochs=5000, lr=0.05):
     dim = R.shape[0]
     mod = LCM(dim).double()
     pos = torch.empty(dim, dtype=torch.float64)
-    pos[order] = torch.linspace(-1.0, 1.0, dim, dtype=torch.float64)
+    pos[order] = torch.linspace(-span / 2, span / 2, dim, dtype=torch.float64)
     with torch.no_grad():
         mod.a.copy_(pos)
     opt = torch.optim.Adam([mod.a, mod.w, mod.u_raw], lr=lr)
@@ -353,6 +360,16 @@ def run_seed(args, seed, LCM, fit_fn):
         t = time.perf_counter()
         add("family_best_effort", fit_family_best_effort(LCM, Rf, order, args.best_effort_epochs),
             time.perf_counter() - t, 2)
+        # Same two fits again, started at a span of `dim` instead of their fixed 2, to
+        # separate the family's ceiling from the published initialisation's reach.
+        t = time.perf_counter()
+        add("published_mse_seriated_span_dim",
+            fit_published(LCM, fit_fn, Rf, order, args.fit_epochs, span=float(C)),
+            time.perf_counter() - t, 2)
+        t = time.perf_counter()
+        add("family_best_effort_span_dim",
+            fit_family_best_effort(LCM, Rf, order, args.best_effort_epochs, span=float(C)),
+            time.perf_counter() - t, 2)
         t = time.perf_counter()
         add("moments_natural_order", fit_moments_arm(Rf, natural), time.perf_counter() - t, 2)
         t = time.perf_counter()
@@ -371,7 +388,7 @@ def run_seed(args, seed, LCM, fit_fn):
               f"negative couplings on the chain {stats['frac_band1_negative']:.0%}  "
               f"clamped w^2 {stats['frac_w2_negative']:.0%}  "
               f"top-2 eigenvalue share {stats['eig_top2_share']:.0%}", flush=True)
-        for r in rows[-11:]:
+        for r in rows[-13:]:
             print(f"    {r['arm']:24} off-diagonal error {r['offdiag_err']:.4f}"
                   f"   {r['seconds']:7.2f}s", flush=True)
     return rows

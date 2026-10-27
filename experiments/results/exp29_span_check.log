@@ -1,0 +1,203 @@
+  seed 0  bn1  C=32  mean |off-diagonal correlation| 0.313  negative off-diagonals 47%  negative couplings on the chain 48%  clamped w^2 25%  top-2 eigenvalue share 50%
+    store_full_matrix        off-diagonal error 0.0138      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.7071      0.08s
+    published_mse_seriated   off-diagonal error 0.5941      0.07s
+    family_best_effort       off-diagonal error 0.5873      1.65s
+    published_mse_seriated_span_dim off-diagonal error 0.8887      0.06s
+    family_best_effort_span_dim off-diagonal error 0.8623      1.57s
+    moments_natural_order    off-diagonal error 0.9836      0.01s
+    moments_seriated         off-diagonal error 0.9745      0.00s
+    moments_signed_natural   off-diagonal error 1.0590      0.00s
+    moments_signed_seriated  off-diagonal error 0.9720      0.00s
+    factor_rank1             off-diagonal error 0.7595      0.00s
+    factor_rank2             off-diagonal error 0.5199      0.00s
+  seed 0  bn2  C=128  mean |off-diagonal correlation| 0.259  negative off-diagonals 48%  negative couplings on the chain 48%  clamped w^2 23%  top-2 eigenvalue share 35%
+    store_full_matrix        off-diagonal error 0.0290      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.7544      0.18s
+    published_mse_seriated   off-diagonal error 0.7241      0.25s
+    family_best_effort       off-diagonal error 0.7095      6.85s
+    published_mse_seriated_span_dim off-diagonal error 0.9709      0.27s
+    family_best_effort_span_dim off-diagonal error 0.9509      6.89s
+    moments_natural_order    off-diagonal error 0.9973      0.00s
+    moments_seriated         off-diagonal error 0.9900      0.00s
+    moments_signed_natural   off-diagonal error 1.0156      0.00s
+    moments_signed_seriated  off-diagonal error 1.0076      0.00s
+    factor_rank1             off-diagonal error 0.8304      0.00s
+    factor_rank2             off-diagonal error 0.6601      0.00s
+  seed 0  bn3  C=256  mean |off-diagonal correlation| 0.328  negative off-diagonals 49%  negative couplings on the chain 46%  clamped w^2 25%  top-2 eigenvalue share 50%
+    store_full_matrix        off-diagonal error 0.0251      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6099      0.45s
+    published_mse_seriated   off-diagonal error 0.6141      0.44s
+    family_best_effort       off-diagonal error 0.6139     11.17s
+    published_mse_seriated_span_dim off-diagonal error 0.9856      0.44s
+    family_best_effort_span_dim off-diagonal error 0.9650     11.23s
+    moments_natural_order    off-diagonal error 0.9981      0.00s
+    moments_seriated         off-diagonal error 0.9960      0.00s
+    moments_signed_natural   off-diagonal error 1.0126      0.00s
+    moments_signed_seriated  off-diagonal error 1.0100      0.00s
+    factor_rank1             off-diagonal error 0.7216      0.00s
+    factor_rank2             off-diagonal error 0.4754      0.00s
+  seed 0  bn4  C=512  mean |off-diagonal correlation| 0.356  negative off-diagonals 49%  negative couplings on the chain 36%  clamped w^2 16%  top-2 eigenvalue share 52%
+    store_full_matrix        off-diagonal error 0.0229      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.7097      0.62s
+    published_mse_seriated   off-diagonal error 0.6260      0.60s
+    family_best_effort       off-diagonal error 0.6083     15.05s
+    published_mse_seriated_span_dim off-diagonal error 0.9917      0.65s
+    family_best_effort_span_dim off-diagonal error 0.9771     15.14s
+    moments_natural_order    off-diagonal error 0.9991      0.00s
+    moments_seriated         off-diagonal error 0.9907      0.00s
+    moments_signed_natural   off-diagonal error 1.0043      0.00s
+    moments_signed_seriated  off-diagonal error 1.0011      0.00s
+    factor_rank1             off-diagonal error 0.7450      0.01s
+    factor_rank2             off-diagonal error 0.5044      0.01s
+  seed 1  bn1  C=32  mean |off-diagonal correlation| 0.322  negative off-diagonals 49%  negative couplings on the chain 52%  clamped w^2 22%  top-2 eigenvalue share 51%
+    store_full_matrix        off-diagonal error 0.0204      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6518      0.06s
+    published_mse_seriated   off-diagonal error 0.6070      0.06s
+    family_best_effort       off-diagonal error 0.5689      1.71s
+    published_mse_seriated_span_dim off-diagonal error 0.8592      0.06s
+    family_best_effort_span_dim off-diagonal error 0.7312      1.58s
+    moments_natural_order    off-diagonal error 0.9951      0.00s
+    moments_seriated         off-diagonal error 0.9657      0.00s
+    moments_signed_natural   off-diagonal error 0.9913      0.00s
+    moments_signed_seriated  off-diagonal error 0.9799      0.00s
+    factor_rank1             off-diagonal error 0.7172      0.00s
+    factor_rank2             off-diagonal error 0.5414      0.00s
+  seed 1  bn2  C=128  mean |off-diagonal correlation| 0.268  negative off-diagonals 47%  negative couplings on the chain 43%  clamped w^2 21%  top-2 eigenvalue share 37%
+    store_full_matrix        off-diagonal error 0.0234      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.7588      0.12s
+    published_mse_seriated   off-diagonal error 0.7498      0.13s
+    family_best_effort       off-diagonal error 0.7279      3.26s
+    published_mse_seriated_span_dim off-diagonal error 0.9621      0.13s
+    family_best_effort_span_dim off-diagonal error 0.9197      3.31s
+    moments_natural_order    off-diagonal error 0.9960      0.00s
+    moments_seriated         off-diagonal error 0.9795      0.00s
+    moments_signed_natural   off-diagonal error 1.0131      0.00s
+    moments_signed_seriated  off-diagonal error 0.9831      0.00s
+    factor_rank1             off-diagonal error 0.8160      0.00s
+    factor_rank2             off-diagonal error 0.6446      0.00s
+  seed 1  bn3  C=256  mean |off-diagonal correlation| 0.332  negative off-diagonals 46%  negative couplings on the chain 43%  clamped w^2 29%  top-2 eigenvalue share 46%
+    store_full_matrix        off-diagonal error 0.0206      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6402      0.44s
+    published_mse_seriated   off-diagonal error 0.6457      0.45s
+    family_best_effort       off-diagonal error 0.6421     11.24s
+    published_mse_seriated_span_dim off-diagonal error 0.9878      0.46s
+    family_best_effort_span_dim off-diagonal error 0.9733     11.27s
+    moments_natural_order    off-diagonal error 0.9970      0.00s
+    moments_seriated         off-diagonal error 0.9965      0.00s
+    moments_signed_natural   off-diagonal error 0.9939      0.00s
+    moments_signed_seriated  off-diagonal error 1.0106      0.00s
+    factor_rank1             off-diagonal error 0.6964      0.01s
+    factor_rank2             off-diagonal error 0.5465      0.06s
+  seed 1  bn4  C=512  mean |off-diagonal correlation| 0.357  negative off-diagonals 49%  negative couplings on the chain 37%  clamped w^2 19%  top-2 eigenvalue share 54%
+    store_full_matrix        off-diagonal error 0.0217      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6167      0.60s
+    published_mse_seriated   off-diagonal error 0.5760      0.61s
+    family_best_effort       off-diagonal error 0.5667     16.07s
+    published_mse_seriated_span_dim off-diagonal error 0.9918      0.75s
+    family_best_effort_span_dim off-diagonal error 0.9816     12.53s
+    moments_natural_order    off-diagonal error 0.9991      0.02s
+    moments_seriated         off-diagonal error 0.9958      0.00s
+    moments_signed_natural   off-diagonal error 1.0069      0.00s
+    moments_signed_seriated  off-diagonal error 1.0069      0.00s
+    factor_rank1             off-diagonal error 0.7410      0.05s
+    factor_rank2             off-diagonal error 0.4367      0.01s
+  seed 2  bn1  C=32  mean |off-diagonal correlation| 0.338  negative off-diagonals 51%  negative couplings on the chain 55%  clamped w^2 38%  top-2 eigenvalue share 50%
+    store_full_matrix        off-diagonal error 0.0171      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6967      0.07s
+    published_mse_seriated   off-diagonal error 0.6965      0.06s
+    family_best_effort       off-diagonal error 0.6990      1.45s
+    published_mse_seriated_span_dim off-diagonal error 0.8790      0.06s
+    family_best_effort_span_dim off-diagonal error 0.7949      1.43s
+    moments_natural_order    off-diagonal error 0.9886      0.00s
+    moments_seriated         off-diagonal error 0.9873      0.00s
+    moments_signed_natural   off-diagonal error 1.0781      0.00s
+    moments_signed_seriated  off-diagonal error 1.0337      0.00s
+    factor_rank1             off-diagonal error 0.7907      0.00s
+    factor_rank2             off-diagonal error 0.5799      0.00s
+  seed 2  bn2  C=128  mean |off-diagonal correlation| 0.273  negative off-diagonals 48%  negative couplings on the chain 46%  clamped w^2 27%  top-2 eigenvalue share 40%
+    store_full_matrix        off-diagonal error 0.0207      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6681      0.11s
+    published_mse_seriated   off-diagonal error 0.6729      0.11s
+    family_best_effort       off-diagonal error 0.6632      3.32s
+    published_mse_seriated_span_dim off-diagonal error 0.9700      0.12s
+    family_best_effort_span_dim off-diagonal error 0.9194      6.97s
+    moments_natural_order    off-diagonal error 0.9942      0.00s
+    moments_seriated         off-diagonal error 0.9906      0.00s
+    moments_signed_natural   off-diagonal error 1.0138      0.00s
+    moments_signed_seriated  off-diagonal error 0.9736      0.00s
+    factor_rank1             off-diagonal error 0.7765      0.00s
+    factor_rank2             off-diagonal error 0.5749      0.00s
+  seed 2  bn3  C=256  mean |off-diagonal correlation| 0.326  negative off-diagonals 46%  negative couplings on the chain 41%  clamped w^2 19%  top-2 eigenvalue share 47%
+    store_full_matrix        off-diagonal error 0.0180      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6528      0.23s
+    published_mse_seriated   off-diagonal error 0.7622      0.23s
+    family_best_effort       off-diagonal error 0.7322      5.69s
+    published_mse_seriated_span_dim off-diagonal error 0.9838      0.23s
+    family_best_effort_span_dim off-diagonal error 0.9667      5.69s
+    moments_natural_order    off-diagonal error 0.9986      0.00s
+    moments_seriated         off-diagonal error 0.9919      0.00s
+    moments_signed_natural   off-diagonal error 1.0122      0.00s
+    moments_signed_seriated  off-diagonal error 0.9937      0.00s
+    factor_rank1             off-diagonal error 0.6800      0.01s
+    factor_rank2             off-diagonal error 0.5150      0.00s
+  seed 2  bn4  C=512  mean |off-diagonal correlation| 0.378  negative off-diagonals 45%  negative couplings on the chain 40%  clamped w^2 20%  top-2 eigenvalue share 59%
+    store_full_matrix        off-diagonal error 0.0148      0.00s
+    identity                 off-diagonal error 1.0000      0.00s
+    published_mse            off-diagonal error 0.6277      0.45s
+    published_mse_seriated   off-diagonal error 0.5909      0.45s
+    family_best_effort       off-diagonal error 0.5741     11.33s
+    published_mse_seriated_span_dim off-diagonal error 0.9934      0.46s
+    family_best_effort_span_dim off-diagonal error 0.9847     11.38s
+    moments_natural_order    off-diagonal error 0.9989      0.00s
+    moments_seriated         off-diagonal error 0.9954      0.00s
+    moments_signed_natural   off-diagonal error 1.0038      0.00s
+    moments_signed_seriated  off-diagonal error 0.9976      0.00s
+    factor_rank1             off-diagonal error 0.7439      0.01s
+    factor_rank2             off-diagonal error 0.3655      0.01s
+
+  Channel correlation at every batch-norm layer, 3 seed(s), cifar10. Fitted on one half of the images, scored on the other.
+
+  arm                       off-diag err    s.d.  seconds
+  store_full_matrix               0.0206  0.0043     0.00
+  identity                        1.0000  0.0000     0.00
+  published_mse                   0.6745  0.0506     0.29
+  published_mse_seriated          0.6549  0.0649     0.29
+  family_best_effort              0.6411  0.0635     7.40
+  published_mse_seriated_span_dim        0.9553  0.0494     0.31
+  family_best_effort_span_dim        0.9189  0.0820     7.42
+  moments_natural_order           0.9955  0.0047     0.00
+  moments_seriated                0.9878  0.0097     0.00
+  moments_signed_natural          1.0170  0.0256     0.00
+  moments_signed_seriated         0.9975  0.0181     0.00
+  factor_rank1                    0.7515  0.0458     0.01
+  factor_rank2                    0.5304  0.0824     0.01
+
+  Off-diagonal error is relative Frobenius distance to the held-out empirical
+  correlation, so 0 is perfect and 1 is no better than predicting zero
+  correlation everywhere (lower is better). 'store_full_matrix' keeps the whole
+  fitting-split matrix, the O(C^2) memory this family exists to avoid, and is
+  the floor a structured fit is trying to approach.
+
+  Paired contrasts, n=12 cells (seed x layer). Negative favours the
+  first arm named. 'Headroom' is the 0.6539 between their published rule
+  and keeping the whole matrix.
+
+  contrast                                       mean    s.e.  s.e. away  same sign  headroom
+  25x fit budget, ordering held fixed         -0.0138  0.0035        4.0      11/12     2.1%
+  seriated ordering, at their budget          -0.0195  0.0159        1.2       8/12     3.0%
+  rank-2 factor vs the over-trained chain     -0.1107  0.0166        6.7      12/12    16.9%
+  rank-2 factor vs their published rule       -0.1441  0.0154        9.4      12/12    22.0%
+
+saved /home/tom/prjs/laplace_bayes/experiments/results/exp29_span_check.csv

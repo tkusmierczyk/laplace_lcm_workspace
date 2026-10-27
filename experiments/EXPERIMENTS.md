@@ -2450,6 +2450,33 @@ which *is* budget-matched at two, is clearly worse (0.7482). The win needs the e
 parameter — but one extra parameter per channel buys several times more than every available
 fix to the chain's fitting put together.
 
+### The falsification attempt this survived
+
+Reading 1 above says the budget is not the constraint. The obvious rival explanation is that
+the *initialisation* is: the authors start the coordinates at `linspace(-1, 1, dim)`, a span of
+2 whatever the dimension, which puts adjacent coordinates at `exp(-2/(C-1))` — 0.996 at 512
+channels, so the kernel begins almost all-ones. Expressing decay over a few neighbours instead
+needs a span of order `C`. On that reading every gradient arm here, ours included, started two
+to three orders of magnitude away from any structured solution, and the "family ceiling" would
+be an artifact of where we all started rather than a property of the family.
+
+It is not. Re-running with the span initialised to the channel count makes the fit **much
+worse**, not better: +0.3004 at their budget (13.2 standard errors, 12 of 12 cells) and +0.2778
+over-trained (9.6 standard errors, 12 of 12). Their fixed span of 2 is close to the best choice
+here, and the chain's ceiling is real.
+
+The reason is the same one that explains reading 5. At a span of `C` the model starts
+*local* — adjacent coordinates at `exp(-1)` and anything a few steps away near zero — whereas
+channel correlation is broad and dense. The all-ones limit the published initialisation sits
+near is the chain's degenerate `diag(d) + w wᵀ` case, which is a far better description of this
+target. That is consistent with the ordering of the arms: the chain's best (0.6246) beats a
+rank-1 factor model (0.7482), its own degenerate limit, and cannot approach rank-2 (0.5268),
+which needs a second global mode the family does not have.
+
+Both arms are kept in the script as `published_mse_seriated_span_dim` and
+`family_best_effort_span_dim` rather than being a one-off check
+(`results/exp29_span_check.csv`, 3 seeds × 4 layers, run on CPU).
+
 ### Why, measured rather than argued
 
 The same run records the three properties that decide it (`structure_stats`):
