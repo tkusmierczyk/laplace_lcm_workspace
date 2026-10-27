@@ -2861,8 +2861,12 @@ results. Use this mapping; it is verified, not inferred, by comparing the md5 of
 | `e357329` | `5dd808e` | the selectable scored layer |
 | `6ae4539` | `a9072e0` | the fit diagnostic |
 
-Later runs need no such table: the metadata now records each repository's `origin` alongside
-the hash, so a reader can tell which history a commit belongs to.
+Those mirror commits are also preserved on the shared remote as the `cluster-mirror` branch, so
+`git fetch origin cluster-mirror` makes the recorded hashes resolve directly and the table above
+becomes a convenience rather than a necessity.
+
+Later runs need neither: the metadata now records each repository's `origin` alongside the hash,
+so a reader can tell which history a commit belongs to.
 
 ```bash
 python experiments/run_all.py          # all 15 experiments, writes results/*.csv
