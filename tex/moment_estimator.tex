@@ -1,0 +1,523 @@
+% Moment matching for the Laplace-kernel covariance.
+% Standalone method note. Builds with: pdflatex moment_estimator.tex (twice, for refs).
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{lmodern}        % scalable fonts; microtype's expansion needs them
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=2.6cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\yes}{\checkmark}
+
+\definecolor{codekw}{rgb}{0.30,0.10,0.50}
+\definecolor{codecm}{rgb}{0.35,0.45,0.35}
+\definecolor{codest}{rgb}{0.60,0.20,0.10}
+\lstdefinestyle{py}{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codecm}\itshape,
+  stringstyle=\color{codest},
+  showstringspaces=false,
+  columns=fullflexible,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!25},
+  framesep=5pt,
+  xleftmargin=6pt,
+  numbers=none,
+}
+\lstset{style=py}
+
+\title{Moment matching for the Laplace-kernel covariance}
+\author{Tomasz Ku\'smierczyk}
+\date{27 October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+A closed-form way to fit the covariance family of \emph{``Stop Marginalizing My Dreams: Model
+Inversion via Laplace Kernel for Continual Learning''} (arXiv:2605.11804, Krukowski et al.),
+which that paper fits by gradient descent. Three bands of the empirical second moment identify
+the parameters outright, in one pass, with no optimiser. On flattened feature maps at the
+paper's own scale it improves on their gradient fit by $0.47$ to $1.13$ nats per dimension
+while fitting $17.5$--$20\times$ faster. It does not replace their whole method: it requires
+the coordinate ordering to be supplied, which their gradient fit is meant to discover. What
+follows gives the derivation, the exact relationship to their procedure, measured limits, and
+a proposal for combining the two. The note is self-contained.
+\end{abstract}
+
+\section{The family}
+
+For a covariance over $N$ variables the paper proposes
+\begin{equation}
+  \Sigma = \operatorname{diag}(d) + \operatorname{diag}(w)\, K(a)\, \operatorname{diag}(w),
+  \qquad
+  K(a)_{ij} = e^{-|a_i - a_j|}.
+  \label{eq:family}
+\end{equation}
+Each variable $i$ receives a coordinate $a_i$ on a line, an amplitude $w_i$ and a diagonal
+(nugget) term $d_i$: three parameters per variable, against the $O(N^2)$ of a dense covariance.
+Correlation decays exponentially in coordinate distance, so variables close on the line are
+strongly dependent and distant ones nearly independent.
+
+The coordinates are \emph{learned}, which is the paper's distinctive move. Sorting by $a$
+induces an ordering over the variables, so the model is intended to discover for itself which
+variables belong near each other.
+
+\paragraph{Why it is cheap.} Sort the coordinates and the model is a Gauss--Markov chain: an
+AR(1) latent process observed with independent noise, equivalently an Ornstein--Uhlenbeck or
+Mat\'ern-$\tfrac12$ process in state-space form. Its precision is tridiagonal, so quadratic
+forms and log-determinants cost $O(N \log N)$ by prefix scan, or $O(N)$ by a Kalman recursion,
+instead of $O(N^3)$. That chain structure is also what makes the fit below possible.
+
+\section{The estimator}
+\label{sec:estimator}
+
+Write $\varphi_p = e^{-(a_p - a_{p-1})} \in (0,1)$ for the decay between neighbours along the
+sorted order. For three consecutive coordinates, \eqref{eq:family} gives
+\begin{align}
+  \Sigma_{p,\,p+1}   &= w_p\, w_{p+1}\, \varphi_{p+1}, \label{eq:b1}\\
+  \Sigma_{p+1,\,p+2} &= w_{p+1}\, w_{p+2}\, \varphi_{p+2}, \label{eq:b2}\\
+  \Sigma_{p,\,p+2}   &= w_p\, w_{p+2}\, \varphi_{p+1}\varphi_{p+2}. \label{eq:b3}
+\end{align}
+Multiplying \eqref{eq:b1} by \eqref{eq:b2} and dividing by \eqref{eq:b3} cancels both outer
+amplitudes and both decays, leaving a single amplitude:
+\begin{equation}
+  \boxed{\;
+  w_{p+1}^{2}
+  = \frac{\Sigma_{p,\,p+1}\; \Sigma_{p+1,\,p+2}}{\Sigma_{p,\,p+2}}
+  \;}
+  \label{eq:key}
+\end{equation}
+Substituting empirical moments for the model entries identifies $w^2$ directly. Everything else
+follows in sequence, each step closed-form. With
+\[
+  s_0 = \mathbb{E}\!\left[x_p^2\right], \qquad
+  s_1 = \mathbb{E}\!\left[x_p x_{p+1}\right], \qquad
+  s_2 = \mathbb{E}\!\left[x_p x_{p+2}\right]
+\]
+the diagonal and first two off-diagonal bands, taken \emph{along the given order}:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Step & Formula & From \\
+\midrule
+amplitudes  & $w^2_{p+1} = s_{1,p}\, s_{1,p+1} / s_{2,p}$        & bands 1 and 2 \\
+decays      & $\varphi_p = s_{1,p} / (w_p w_{p+1})$              & band 1 \\
+coordinates & $a = \operatorname{cumsum}(-\log \varphi)$          & the decays \\
+nugget      & $d = s_0 - w^2$                                     & the diagonal \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Cost.} One pass over the data for the three bands, then $O(N)$ arithmetic, and
+$O(N)$ memory --- the $N \times N$ matrix is never formed. There is nothing to tune: no
+learning rate, no convergence criterion, no divergence.
+
+\paragraph{Two details the three bands force.} The endpoint amplitudes $w^2_1$ and $w^2_N$ are
+not identified by three bands, so they are copied inward from their neighbours. And $w^2$ is
+clamped to $[0,\, 0.999\, s_0]$ so the implied nugget stays positive.
+
+\paragraph{Correctness.} The fit is exact to floating point when the target genuinely lies in
+the family, except at those two endpoints. Checked against a dense Cholesky factorisation at
+$N = 16\,384$: log-determinant agreeing to $3.1\mathrm{e}{-10}$, quadratic form to
+$3.1\mathrm{e}{-7}$, all eigenvalues positive.
+
+\subsection{The whole estimator}
+
+Listing~\ref{lst:fit} is the entire method, with the clamping kept, since the degenerate cases
+are where a naive transcription breaks. Executed against the reference implementation on data
+drawn from a known chain it reproduces it exactly, to $0.0$ difference on both the coordinates
+and the amplitudes --- so this is runnable code, not pseudo-code.
+
+\begin{lstlisting}[style=py,caption={The closed-form fit in full.},label={lst:fit},float=htbp]
+def fit_moments(X, order=None, eps=1e-6, clip=0.999):
+    """Closed-form LCM fit. X is (n_samples, dim), centred. Returns (a, w, d)
+    in the ORIGINAL indexing, so the caller's variable order is preserved."""
+    n, dim = X.shape
+    perm = torch.arange(dim) if order is None else torch.as_tensor(order)
+    P = X[:, perm]                                   # into chain order
+
+    # the three bands -- the only statistics the fit ever sees
+    s0 = (P * P).mean(0)                             # diagonal
+    s1 = (P[:, :-1] * P[:, 1:]).mean(0)              # band 1
+    s2 = (P[:, :-2] * P[:, 2:]).mean(0)              # band 2
+
+    tol = eps * s0.mean().clamp(min=eps)
+
+    # amplitudes: w^2_{p+1} = s1_p * s1_{p+1} / s2_p
+    w2 = torch.zeros(dim, dtype=X.dtype)
+    w2[1:-1] = torch.where(s2.abs() > tol, s1[:-1] * s1[1:] / s2, torch.zeros_like(s2))
+    w2[0], w2[-1] = w2[1], w2[-2]                    # endpoints unidentified; copy inward
+    w2 = w2.clamp(min=0.0).minimum(clip * s0)        # keep the nugget positive
+    w = w2.sqrt()                                    # <-- sign is discarded here (Sec. 5)
+
+    # decays from band 1, then coordinates as a cumulative sum of -log phi
+    denom = (w[:-1] * w[1:]).clamp(min=tol)
+    phi = (s1 / denom).clamp(min=tol, max=1.0 - 1e-12)
+    a_chain = torch.cat([torch.zeros(1, dtype=X.dtype), (-phi.log()).cumsum(0)])
+
+    d = (s0 - w2).clamp(min=tol)                     # nugget
+
+    a, wv, dv = (torch.empty(dim, dtype=X.dtype) for _ in range(3))
+    a[perm], wv[perm], dv[perm] = a_chain, w, d
+    return a, wv, dv
+\end{lstlisting}
+
+Three lines carry the whole idea: the \code{w2[1:-1]} ratio, the \code{phi} division, and the
+\code{cumsum}. Everything else is bookkeeping and guards. Note that $a$ is never initialised
+and never updated --- it is \emph{computed}, which is the difference from the gradient fit
+discussed in Section~\ref{sec:relation}. In library form:
+
+\begin{lstlisting}[style=py]
+est = LCMCovariance(dim=X.shape[1], dtype=torch.float64)
+est.fit_moments(X)                      # natural index order
+est.fit_moments(X, order=my_order)      # or supply an ordering
+nll = est.nll(X_heldout)                # O(dim) Kalman recursion, no dense matrix
+\end{lstlisting}
+
+\paragraph{Provenance.} The ingredients are classical: this is a Yule--Walker-style moment
+estimator for an OU/AR(1) process. What is not textbook is the \emph{non-stationary} case ---
+a separate amplitude per coordinate, a separate decay per gap, and a per-coordinate nugget,
+where standard treatments assume one variance and one decay. Two targeted literature searches
+did not turn it up, but two searches are not a review, so \textbf{novelty should be treated as
+unverified}. What is verified is that it is absent from the paper: that paper fits by
+minimising a squared Frobenius distance, derived in its own appendix, and its released code
+contains no moment estimator, no band-based fitting and no closed form of any kind.
+
+\section{Relationship to the published method}
+\label{sec:relation}
+
+The paper minimises $\lVert \Sigma - \hat\Sigma \rVert_F^2$ over $(d, w, a)$ jointly with Adam
+--- learning rate $0.01$, 200 epochs in its channel configuration, 50 in its inversion
+configuration. The two procedures do \emph{not} solve the same problem.
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & Paper's gradient fit & Moment matching \\
+\midrule
+Ordering of the variables & \textbf{learned} (sorting by $a$) & \textbf{given} (an input) \\
+Coordinate spacing        & learned                            & closed form \\
+Amplitudes and nugget     & learned                            & closed form \\
+Objective                 & squared Frobenius distance         & moment identity, none \\
+Cost                      & iterative, tuned                   & one pass, $O(N)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+So moment matching addresses a \textbf{strictly smaller problem}: the parameters, conditional
+on an ordering. The paper's method is more ambitious and attempts both at once.
+
+\subsection{Why comparing them on flattened feature maps is still fair}
+
+The paper initialises $a = \operatorname{linspace}(-1, 1, N)$, which assigns coordinate $i$ in
+proportion to $i$ --- so it already encodes the natural index order. On a flattened feature map
+that order is meaningful, since neighbouring indices are adjacent pixels. Both procedures
+therefore start from the same ordering information, and what differs between them is the
+\emph{spacing}.
+
+Table~\ref{tab:exp25} gives the held-out Gaussian cost of centred CIFAR-100 features, in nats
+per dimension, lower better, 3 seeds, at dimensions up to $196\,608$.
+
+\begin{table}[htbp]
+\centering
+\caption{Fitting rules compared at the paper's own scale. Lower is better.}
+\label{tab:exp25}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Fitting rule & par/dim & $16\,384$ & $65\,536$ & $196\,608$ \\
+\midrule
+Diagonal --- the paper's own baseline          & 1 & $0.8372$ & $0.7566$ & $1.0030$ \\
+Factor analysis, 3 factors (larger budget)     & 4 & $0.6669$ & $0.6155$ & $0.8425$ \\
+Chain, exact maximum likelihood                & 3 & $0.6811$ & ---      & ---      \\
+Chain, the paper's Frobenius rule              & 3 & $0.6000$ & $0.6165$ & $0.8472$ \\
+Chain, Frobenius, coordinates \emph{frozen}    & 2 & $0.6349$ & $0.5969$ & $0.8396$ \\
+\textbf{Chain, moment matching}                & 3 & $\mathbf{0.1325}$ & $\mathbf{-0.0537}$ & $\mathbf{-0.2873}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Paired on the same seeds, the advantage over their rule is $+0.4674 \pm 0.0508$ at $16\,384$
+(9 standard errors), $+0.6702 \pm 0.0095$ at $65\,536$ (71), and $+1.1345 \pm 0.0229$ at
+$196\,608$ (50). Fitting time is $98$\,s against $1723$\,s at the largest width.
+
+\subsection{What that comparison shows, and what it does not}
+
+\paragraph{Their fitting is the weak link, not their loss.} Fitting the same family by exact
+maximum likelihood --- optimising precisely the quantity being scored, at $180\times$ the cost
+--- reaches $0.6811$, slightly \emph{worse} than their Frobenius rule. Both gradient routes
+stall in the same region, so the difficulty is the optimisation landscape of this
+parameterisation rather than the choice of objective.
+
+\paragraph{The mechanism is the coordinate span.} Expressing decay over a few neighbours at $N$
+coordinates needs a span of order $N$. The published initialisation gives a span of $2$
+whatever the dimension, which at $N = 200\,704$ puts adjacent coordinates at correlation
+$0.99999$ and the most distant pair at $e^{-2} = 0.135$: almost structureless, and roughly
+$400\,000\times$ away from the solution. Moment matching does not travel there, because
+$\operatorname{cumsum}(-\log\varphi)$ \emph{computes} the span. Table~\ref{tab:span} shows what
+each fit produces on a ResNet-34's four layers.
+
+\begin{table}[htbp]
+\centering
+\caption{What each fitted covariance actually imposes, per layer.}
+\label{tab:span}
+\begin{tabular}{@{}lccc@{}cccc@{}}
+\toprule
+& \multicolumn{3}{c}{Paper's Frobenius fit} & & \multicolumn{3}{c}{Moment matching} \\
+\cmidrule(r){2-4}\cmidrule(l){6-8}
+Layer & span & nbr.\ corr. & fit/real var. & & span & nbr.\ corr. & fit/real var. \\
+\midrule
+layer1 & $\mathbf{0.0}$ & $0.0002$ & $3.06\times$  & & $817\,775$ & $0.569$ & $1.000$ \\
+layer2 & $\mathbf{0.0}$ & $0.0000$ & $6.81\times$  & & $340\,766$ & $0.443$ & $1.000$ \\
+layer3 & $\mathbf{0.0}$ & $0.0000$ & $16.03\times$ & & $141\,889$ & $0.477$ & $1.000$ \\
+layer4 & $1.2$          & $0.0002$ & $0.63\times$  & & $16\,476$  & $0.849$ & $1.000$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+With every coordinate coincident $K(a)$ is all-ones, so $\Sigma$ can only be
+diagonal-plus-rank-one --- and the rank-one weights vanish too, which is what the $0.0002$
+measures. What is left is a diagonal with variances $3$ to $16\times$ the real feature
+variances. The moment fit matches those variances exactly, by construction, and imposes real
+neighbour correlation of $0.44$ to $0.85$.
+
+\paragraph{It shows nothing about their ordering claim.} Both arms used the natural index. Note
+also the frozen-coordinate row of Table~\ref{tab:exp25}: fixing the coordinates at equal
+spacing uses one parameter less and beats \emph{learning} them at both large widths. On that
+evidence the learned ordering is not earning its keep --- but the evidence is itself from
+gradient fits starting at span $2$, so it bounds the published procedure rather than the idea
+of learning an order.
+
+\section{The ordering requirement, measured}
+\label{sec:ordering}
+
+Because the bands are the chain's neighbours only when the coordinates are already sorted, a
+wrong order is not a small perturbation. Table~\ref{tab:order} reports held-out negative
+log-likelihood on data drawn from a known chain, 3 seeds. ``Order recovery'' is the absolute
+correlation between a spectrally seriated order and the true one: $1.0$ perfect, $0$ chance.
+The diagonal column is the no-structure floor.
+
+\begin{table}[htbp]
+\centering
+\caption{Sensitivity of the closed-form fit to the ordering it is given. Lower is better.}
+\label{tab:order}
+\begin{tabular}{@{}rrrrrrr@{}}
+\toprule
+$N$ & adj.\ corr. & order recovery & true order & seriated & random & diagonal \\
+\midrule
+$256$  & $0.575$ & $\mathbf{0.999}$ & $361.7$  & $370.4$  & $434.3$  & $437.0$  \\
+$256$  & $0.271$ & $0.270$          & $426.8$  & $436.6$  & $436.9$  & $437.0$  \\
+$1024$ & $0.575$ & $0.690$          & $1446.3$ & $1674.5$ & $1748.4$ & $1750.2$ \\
+$2048$ & $0.575$ & $0.531$          & $2892.3$ & $3441.7$ & $3497.6$ & $3498.8$ \\
+$2048$ & $0.271$ & $0.019$          & $3418.5$ & $3499.7$ & $3499.8$ & $3499.8$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two readings. \textbf{A random order yields a diagonal}, landing within $1.3$ nats of the floor
+at every setting: the implied amplitudes go to zero and the fit collapses, with no graceful
+degradation. And \textbf{spectral seriation substitutes for the true order only at small
+dimension and strong coupling} --- essentially exact at $N = 256$ with adjacent correlation
+$0.575$, falling to $0.531$ at $N = 2048$ and to $0.019$ once adjacent correlation drops to
+$0.27$, with the fit degrading alongside it.
+
+So where the data supplies a meaningful order --- a flattened feature map, a spectrum, a time
+series --- moment matching is immediately usable. Where the order must be discovered, there is
+no demonstrated way to supply it at the dimensions this family targets.
+
+\section{Where it does not work}
+\label{sec:limits}
+
+\paragraph{It emits only positive couplings.} Taking $w = +\sqrt{w^2}$ discards the sign, so
+every off-diagonal entry it produces carries the sign of $w_p w_q$. This is harmless where
+neighbours are positively correlated, and fatal over \emph{channels}, where $47$--$49\%$ of
+off-diagonal entries are negative: the estimator collapses towards the identity, scoring
+$0.986$--$0.995$ relative off-diagonal Frobenius error where $1.0$ means predicting no
+correlation at all.
+
+The sign is in principle recoverable from the same bands at no parameter cost, since the decay
+is positive and therefore $\operatorname{sign}(\Sigma_{p,p+1}) = \operatorname{sign}(w_p
+w_{p+1})$ propagates along the chain. It does not survive testing: a small-scale check improved
+a seriated fit from $0.98$ to $0.88$, but across 3 seeds $\times$ 4 layers it reached $0.9897$,
+no better than unsigned.
+
+\paragraph{It uses three bands only}, so it cannot exploit longer-range structure and has no
+recourse when the target is poorly described by a chain at all.
+
+\paragraph{A better fit is not automatically better downstream.} Dropping this covariance into
+the paper's own inversion loop made the generated images \emph{worse}: correlation-profile
+error $0.2184$ against $0.0623$ for their own fit and $0.0250$ for their no-covariance
+ablation, and Fr\'echet distance $368.7$ against $310.7$. The reason is structural rather than a
+bug. Minimising a Gaussian negative log-likelihood \emph{with respect to the data} is
+mode-seeking, so a correctly correlated precision penalises differences between neighbouring
+coordinates and smooths the feature map. Better density estimation, stronger smoothing prior.
+
+\section{How this could improve the published method}
+\label{sec:improve}
+
+All five proposals below are \textbf{untested}. They are ordered cheapest first, and each says
+what would falsify it. They apply to the flattened-feature configuration; see the caution in
+Section~\ref{sec:caution} about the channel configuration.
+
+\subsection{Scale the coordinate initialisation with dimension --- one line}
+
+The span of $2$ is dimension-independent, while the required span grows with $N$. Replace
+$\operatorname{linspace}(-1,1,N)$ with a span set from the data: the mean absolute band-1
+correlation $\rho_1$ implies a gap of $-\log \rho_1$, so initialise
+$a = \operatorname{arange}(N)\cdot(-\log\rho_1)$. This needs only $s_1$, costs one pass, and
+leaves their objective, optimiser and code path untouched.
+
+\emph{Falsified if} the fit still collapses the span, or ends no better than from
+$\operatorname{linspace}(-1,1,N)$. A caution from our own data: over channels we tried a span of
+$N$ and the fit became substantially worse, because channel covariance is broad rather than
+local. The right span is whatever the data implies, not simply a large one.
+
+\subsection{Warm-start their gradient fit from the closed form}
+
+Run moment matching, then run their Frobenius descent from the result. This keeps their
+objective and their ability to refine beyond what three bands identify --- longer-range
+structure, the two unidentified endpoints --- while starting in the region the optimiser cannot
+reach unaided.
+
+\emph{Falsified if} their descent moves away from the moment solution and ends worse than it.
+That outcome would itself be informative: it would mean the Frobenius optimum lies genuinely
+elsewhere, and the gap in Table~\ref{tab:exp25} is a disagreement between objectives rather
+than an optimisation failure.
+
+\subsection{Alternate closed-form blocks with gradient steps on the ordering only}
+\label{sec:alternate}
+
+This is the proposal the structure of the problem most directly supports. The parameters split
+cleanly by what each method is good at:
+\begin{itemize}
+  \item Given the ordering and the decays, \textbf{amplitudes and nugget have closed-form
+        solutions}.
+  \item Given the ordering and the amplitudes, \textbf{the decays have a closed-form solution}
+        from band 1.
+  \item The \textbf{ordering} has no closed form at all --- and it is precisely what their
+        gradient fit is for.
+\end{itemize}
+
+\begin{lstlisting}[style=py,caption={Alternating scheme: closed form for scale, gradients for order.},label={lst:alt},float=htbp]
+order = natural_index            # or a seriation of |corr|, or their linspace ordering
+for sweep in range(max_sweeps):
+    # 1. closed form: reset scale parameters to their optimum for THIS ordering.  O(N)
+    a, w, d = fit_moments(X, order=order)
+    model.a.data, model.w.data, model.d.data = a, w, d
+
+    # 2. gradient steps on the coordinates ONLY, with the scales frozen.
+    #    Their objective, their optimiser -- just a much smaller parameter set.
+    opt = torch.optim.Adam([model.a], lr=lr)
+    for _ in range(inner_steps):
+        opt.zero_grad()
+        frobenius_loss(model.covariance(), S_hat).backward()   # their Eq. (5)
+        opt.step()
+
+    # 3. the ordering is the discrete state; stop when it stops moving.
+    new_order = torch.argsort(model.a)
+    if torch.equal(new_order, order):
+        break
+    order = new_order
+\end{lstlisting}
+
+Step 1 keeps the scale parameters at their moment-matched optimum for the current ordering, so
+the gradient in step 2 never has to fix the span --- it only has to decide the permutation,
+which is the one thing moments cannot give. Step 3 makes the alternation a discrete descent on
+the ordering, with a natural stopping rule.
+
+Two properties make this attractive. The expensive part of their fit, iterating on all $3N$
+parameters, shrinks to iterating on $N$. And the silent failure mode disappears: the span
+cannot collapse, because step 1 resets it from the data every sweep.
+
+\emph{Falsified if} the alternation does not improve on moment matching with a fixed natural
+order, or if it cycles without converging. The honest prior is mixed. Section~\ref{sec:ordering}
+shows the ordering is worth a great deal when you have it, and gradient fits in this project
+have never recovered an ordering from an uninformed start --- but all of those fits also began
+at the wrong span, which this scheme removes. That confound is exactly what makes the
+experiment worth running.
+
+\subsection{Use the closed-form span as a free diagnostic}
+
+The collapse in Table~\ref{tab:span} is invisible in the loss curve, which falls smoothly and
+looks converged while the model degenerates to a diagonal. Computing the moment-matched span
+costs one pass and gives a reference: if the fitted span is orders of magnitude smaller, the
+fit has collapsed. This catches the failure without changing their method at all, and is the
+one proposal here with essentially no downside.
+
+\subsection{For channels, address the sign pattern rather than the fitting}
+
+Over channels the limitation is representational, not numerical. The achievable sign pattern is
+$\operatorname{sign}(w_i w_j)$, which is rank-one --- a two-camp split --- while almost half the
+real off-diagonal entries are negative in an overlapping pattern. A principled attempt would
+estimate the camp assignment separately, for instance from the sign of the leading eigenvector
+of the empirical correlation, then moment-match within camps.
+
+This is the most speculative proposal here, and the evidence is against it: the simpler sign
+restoration already failed at scale, and over channels a rank-two factor model at one extra
+parameter per channel beats the chain's best achievable fit by a wide margin. The honest
+conclusion over channels is that fitting is not where the problem lies.
+
+\subsection{The caution that governs all of these}
+\label{sec:caution}
+
+\textbf{Improving the fit may not improve the paper's results.} Section~\ref{sec:limits} records
+that a better-fitting covariance made their inversion output measurably worse, because the
+fitted covariance enters their loss as a penalty on the generated features and a correctly
+correlated penalty over-smooths. Anyone pursuing the first three proposals should therefore
+measure the downstream metric, not only fit quality, and should expect the covariance weight to
+need re-tuning: their loop multiplies this term by a single fixed weight, and a better-fitted
+covariance hands it a term of quite different scale and curvature.
+
+There is a reading of these results under which the paper's gradient fit is \emph{accidentally}
+doing something useful: collapsing to a loose, over-wide diagonal that acts as a mild
+regulariser. If that is what drives the reported gains, then fixing the fit removes the
+mechanism. Establishing which is true needs the one experiment nobody has run --- turning the
+covariance term off and reading the accuracy.
+
+\section{Reproducing what is quoted here}
+
+\begin{lstlisting}[style=py,language=bash,basicstyle=\ttfamily\footnotesize]
+# fitting comparison at the paper's scale (cluster, ~5 h on one CPU node)
+sbatch cluster/exp25.sbatch
+
+# correctness against a dense Cholesky (laptop, seconds)
+python -u experiments/exp25_verify_moments.py
+
+# ordering dependence and seriation's reach (laptop, ~3 min on CPU)
+python -u experiments/exp30_ordering_dependence.py
+\end{lstlisting}
+
+\begin{center}
+\begin{tabular}{@{}p{0.33\textwidth}p{0.59\textwidth}@{}}
+\toprule
+What & Where \\
+\midrule
+The estimator & \code{Laplace/laplace/lcm.py} --- \code{LCMCovariance.fit\_moments} \\
+Fitting comparison at scale & \code{experiments/exp25\_paper\_scale\_baselines.py} \\
+Correctness check & \code{experiments/exp25\_verify\_moments.py} \\
+Ordering dependence & \code{experiments/exp30\_ordering\_dependence.py} \\
+Span collapse in the paper's loop & \code{experiments/exp28\_model\_inversion.py} \\
+The signed variant that failed & \code{experiments/exp29\_channel\_correlation\_fit.py} \\
+The paper's code, cloned & \code{reference/REMIX/} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Every result file has a \code{.meta.json} beside it recording the configuration, seeds, both
+git commits, host and, for cluster runs, the job id.
+
+\end{document}
