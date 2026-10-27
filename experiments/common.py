@@ -46,7 +46,12 @@ def set_seed(seed: int) -> None:
 
 # ------------------------------------------------------------------ provenance
 def _git(path: str) -> dict | None:
-    """Short HEAD and dirty flag of the repository containing ``path``."""
+    """Short HEAD, origin and dirty flag of the repository containing ``path``.
+
+    ``origin`` matters because cluster runs execute from a mirror clone: without it the
+    recorded hash is unresolvable in whichever repository the results are later read from,
+    which is exactly what happened to the exp25/exp28 results run on the GMUM gateway.
+    """
     try:
         run = lambda *a: subprocess.run(  # noqa: E731
             ["git", "-C", path, *a], capture_output=True, text=True, timeout=15
@@ -54,8 +59,10 @@ def _git(path: str) -> dict | None:
         head = run("rev-parse", "--short", "HEAD")
         if head.returncode:
             return None
+        origin = run("remote", "get-url", "origin")
         return {
             "commit": head.stdout.strip(),
+            "origin": origin.stdout.strip() if not origin.returncode else None,
             "dirty": bool(run("status", "--porcelain").stdout.strip()),
         }
     except (OSError, subprocess.SubprocessError):

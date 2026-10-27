@@ -2848,6 +2848,13 @@ pre-registered predictions:
 
 ## Reproduction
 
+**Reading the provenance of a cluster result.** Every result file has a `.meta.json` beside it
+recording the commit it ran at. For runs executed on the GMUM gateway — the Exp 25 and Exp 28
+results — that commit belongs to the **mirror clone** on the cluster, not to this repository,
+so the hash will not resolve here. Those are `d3918ee`, `e357329` and `6ae4539`. The metadata
+now records each repository's `origin` alongside the hash, so later runs say where to resolve
+them; the seven files written before that change do not.
+
 ```bash
 python experiments/run_all.py          # all 15 experiments, writes results/*.csv
 python experiments/exp8c_joint_ci.py   # the headline joint-UQ result (10 seeds)
