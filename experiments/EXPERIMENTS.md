@@ -2861,12 +2861,16 @@ results. Use this mapping; it is verified, not inferred, by comparing the md5 of
 | `e357329` | `5dd808e` | the selectable scored layer |
 | `6ae4539` | `a9072e0` | the fit diagnostic |
 
-Those mirror commits are also preserved on the shared remote as the `cluster-mirror` branch, so
-`git fetch origin cluster-mirror` makes the recorded hashes resolve directly and the table above
-becomes a convenience rather than a necessity.
+The mirror's own history is **not** on the shared remote, deliberately: it carries 17 generated
+inversion images totalling 24 MB, and the table above already makes its commits traceable
+without them. The mirror itself still holds that history on the cluster, under
+`~/laplace_lcm`, if a byte-exact checkout is ever needed.
 
-Later runs need neither: the metadata now records each repository's `origin` alongside the hash,
-so a reader can tell which history a commit belongs to.
+Later runs need neither the table nor the mirror: the metadata now records each repository's
+`origin` alongside the hash, so a reader can tell which history a commit belongs to. One
+caution for anyone running there — the mirror commits its whole `experiments/results/` tree,
+images included, which is why its history is 24 MB of PNGs. This repository keeps results small
+and tracks only two small plots.
 
 ```bash
 python experiments/run_all.py          # all 15 experiments, writes results/*.csv
